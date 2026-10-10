@@ -16,3 +16,6 @@ Run the app in development mode:
 npm run tauri dev
 ```
 
+## License
+
+This project is licensed under the [MIT License](LICENSE).
