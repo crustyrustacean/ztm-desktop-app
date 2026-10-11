@@ -55,6 +55,7 @@
     background-color: #0f0f0f69;
   }
 
-.course-list li {
-  padding-block: 0.375rem;
+  .course-list li {
+      padding-block: 0.375rem;
+  }
 }

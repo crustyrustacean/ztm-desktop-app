@@ -22,7 +22,7 @@ function errorMessage(error: "desktop-only" | "sync-failed", hasCourses: boolean
     : "Could not load courses. Check your internet connection and try again.";
 }
 
-function Dashboard() {
+function Dashboard({filter}: { filter: string} ) {
   const [courses, setCourses] = useState<string[]>([]);
   const [syncing, setSyncing] = useState(true);
   const [error, setError] = useState<"desktop-only" | "sync-failed" | null>(
@@ -95,7 +95,10 @@ function Dashboard() {
     };
   }, [syncCourses]);
 
+  const visibleCourses = courses.filter((course) => course.toLowerCase().includes(filter.toLowerCase()));
+
   return (
+
     <main className="dashboard">
       <h1>Dashboard</h1>
       <h2 id="courses-heading">Courses</h2>
@@ -119,7 +122,7 @@ function Dashboard() {
         </div>
       )}
       <ul className="course-list" aria-labelledby="courses-heading">
-        {courses.map((course, index) => (
+        {visibleCourses.map((course, index) => (
           <li key={`${index}-${course}`}>{course}</li>
         ))}
       </ul>
