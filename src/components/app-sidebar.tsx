@@ -1,4 +1,5 @@
 import { LayoutDashboard } from "lucide-react";
+import { SiDiscord } from "react-icons/si";
 import {
   Sidebar,
   SidebarContent,
@@ -7,6 +8,7 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@/components/ui/sidebar";
+import { openDiscord } from "@/lib/discord";
 
 export function AppSidebar() {
   return (
@@ -23,6 +25,12 @@ export function AppSidebar() {
               >
                 <LayoutDashboard />
                 <span>Dashboard</span>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+            <SidebarMenuItem>
+              <SidebarMenuButton onClick={openDiscord} tooltip="Discord">
+                <SiDiscord />
+                <span>Discord</span>
               </SidebarMenuButton>
             </SidebarMenuItem>
           </SidebarMenu>

@@ -1,49 +1,128 @@
-import { useState } from "react";
-import reactLogo from "../assets/react.svg";
-import { invoke } from "@tauri-apps/api/core";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { invoke, isTauri } from "@tauri-apps/api/core";
+import { Button } from "@/components/ui/button";
 import "./Dashboard.css";
 
-function Dashboard() {
-  const [greetMsg, setGreetMsg] = useState("");
-  const [name, setName] = useState("");
+/** Milliseconds until the next Monday 07:00 UTC, when Rust next treats a sync as due. */
+function msUntilNextSync(now = Date.now()) {
+  const next = new Date(now);
+  next.setUTCHours(7, 0, 0, 0);
+  next.setUTCDate(next.getUTCDate() + ((8 - next.getUTCDay()) % 7));
+  if (next.getTime() <= now) next.setUTCDate(next.getUTCDate() + 7);
+  return next.getTime() - now;
+}
 
-  async function greet() {
-    // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
-    setGreetMsg(await invoke("greet", { name }));
+// Chosen at render time so the message matches whether a list is actually shown.
+function errorMessage(error: "desktop-only" | "sync-failed", hasCourses: boolean) {
+  if (error === "desktop-only") {
+    return "Course loading requires the desktop app. Run npm run tauri dev and use the desktop window, not the browser preview.";
   }
+  return hasCourses
+    ? "Could not update courses. Showing the saved local list."
+    : "Could not load courses. Check your internet connection and try again.";
+}
+
+function Dashboard() {
+  const [courses, setCourses] = useState<string[]>([]);
+  const [syncing, setSyncing] = useState(true);
+  const [error, setError] = useState<"desktop-only" | "sync-failed" | null>(
+    null,
+  );
+  const mounted = useRef(true);
+
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
+
+  const syncCourses = useCallback(async (force: boolean) => {
+    setSyncing(true);
+    try {
+      // Rust skips the check unless one is due (or forced); null means unchanged.
+      const updatedCourses = await invoke<string[] | null>("sync_courses", {
+        force,
+      });
+      if (!mounted.current) return;
+      if (updatedCourses) setCourses(updatedCourses);
+      setError(null);
+    } catch (cause) {
+      console.error("Could not synchronize academy courses:", cause);
+      if (!mounted.current) return;
+      setError("sync-failed");
+    } finally {
+      if (mounted.current) setSyncing(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+
+    function scheduleWeeklySync() {
+      timer = setTimeout(async () => {
+        await syncCourses(false);
+        if (!cancelled) scheduleWeeklySync();
+      }, msUntilNextSync());
+    }
+
+    async function loadCourses() {
+      if (!isTauri()) {
+        setError("desktop-only");
+        setSyncing(false);
+        return;
+      }
+
+      try {
+        const cachedCourses = await invoke<string[] | null>("load_courses");
+        if (!cancelled && cachedCourses) {
+          setCourses(cachedCourses);
+        }
+      } catch (cause) {
+        console.error("Could not load academy cache:", cause);
+      }
+
+      if (cancelled) return;
+      await syncCourses(false);
+      if (!cancelled) scheduleWeeklySync();
+    }
+
+    void loadCourses();
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [syncCourses]);
 
   return (
-    <main className="container">
-      <h1>Welcome to Tauri + React</h1>
-
-      <div className="row">
-        <a href="https://vite.dev" target="_blank">
-          <img src="/vite.svg" className="logo vite" alt="Vite logo" />
-        </a>
-        <a href="https://tauri.app" target="_blank">
-          <img src="/tauri.svg" className="logo tauri" alt="Tauri logo" />
-        </a>
-        <a href="https://react.dev" target="_blank">
-          <img src={reactLogo} className="logo react" alt="React logo" />
-        </a>
-      </div>
-      <p>Click on the Tauri, Vite, and React logos to learn more.</p>
-
-      <form
-        className="row"
-        onSubmit={(e) => {
-          e.preventDefault();
-          greet();
-        }}
-      >
-        <input
-          id="greet-input"
-          onChange={(e) => setName(e.currentTarget.value)}
-          placeholder="Enter a name..."
-        />
-        <button type="submit">Greet</button>
-      </form>
-      <p>{greetMsg}</p>
+    <main className="dashboard">
+      <h1>Dashboard</h1>
+      <h2 id="courses-heading">Courses</h2>
+      {syncing && (
+        <p role="status">
+          {courses.length ? "Checking for course updates..." : "Loading courses..."}
+        </p>
+      )}
+      {error && (
+        <div role="alert">
+          <p>{errorMessage(error, courses.length > 0)}</p>
+          {error === "sync-failed" && !syncing && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => void syncCourses(true)}
+            >
+              Retry
+            </Button>
+          )}
+        </div>
+      )}
+      <ul className="course-list" aria-labelledby="courses-heading">
+        {courses.map((course, index) => (
+          <li key={`${index}-${course}`}>{course}</li>
+        ))}
+      </ul>
     </main>
   );
 }

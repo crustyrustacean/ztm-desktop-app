@@ -7,7 +7,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 function App() {
   return (
     <TooltipProvider>
-      <SidebarProvider className="app-shell">
+      <SidebarProvider>
         <AppSidebar />
         <div className="min-w-0 flex-1">
           <header className="flex h-12 items-center border-b px-4">
