@@ -12,8 +12,10 @@ function msUntilNextSync(now = Date.now()) {
   return next.getTime() - now;
 }
 
+type SyncError = "desktop-only" | "sync-failed";
+
 // Chosen at render time so the message matches whether a list is actually shown.
-function errorMessage(error: "desktop-only" | "sync-failed", hasCourses: boolean) {
+function errorMessage(error: SyncError, hasCourses: boolean) {
   if (error === "desktop-only") {
     return "Course loading requires the desktop app. Run npm run tauri dev and use the desktop window, not the browser preview.";
   }
@@ -22,12 +24,14 @@ function errorMessage(error: "desktop-only" | "sync-failed", hasCourses: boolean
     : "Could not load courses. Check your internet connection and try again.";
 }
 
-function Dashboard() {
+type DashboardProps = {
+  filter: string;
+};
+
+function Dashboard({ filter }: DashboardProps) {
   const [courses, setCourses] = useState<string[]>([]);
   const [syncing, setSyncing] = useState(true);
-  const [error, setError] = useState<"desktop-only" | "sync-failed" | null>(
-    null,
-  );
+  const [error, setError] = useState<SyncError | null>(null);
   const mounted = useRef(true);
 
   useEffect(() => {
@@ -95,7 +99,10 @@ function Dashboard() {
     };
   }, [syncCourses]);
 
+  const visibleCourses = courses.filter((course) => course.toLowerCase().includes(filter.toLowerCase()));
+
   return (
+
     <main className="dashboard">
       <h1>Dashboard</h1>
       <h2 id="courses-heading">Courses</h2>
@@ -119,7 +126,7 @@ function Dashboard() {
         </div>
       )}
       <ul className="course-list" aria-labelledby="courses-heading">
-        {courses.map((course, index) => (
+        {visibleCourses.map((course, index) => (
           <li key={`${index}-${course}`}>{course}</li>
         ))}
       </ul>
