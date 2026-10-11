@@ -23,18 +23,20 @@ function App() {
         <div className="min-w-0 flex-1">
           <header className="flex h-12 items-center border-b px-4">
             <SidebarTrigger />
-            {view === "dashboard" && <InputGroup className="ml-2 max-w-sm">
-              <InputGroupInput
-                type="search"
-                aria-label="Filter courses"
-                placeholder="Filter courses..."
-                value={query}
-                onChange={(event) => setQuery(event.target.value)}
-              />
-              <InputGroupAddon>
-                <SearchIcon />
-              </InputGroupAddon>
-            </InputGroup>}
+            {view === "dashboard" && (
+              <InputGroup className="ml-2 max-w-sm">
+                <InputGroupInput
+                  type="search"
+                  aria-label="Filter courses"
+                  placeholder="Filter courses..."
+                  value={query}
+                  onChange={(event) => setQuery(event.target.value)}
+                />
+                <InputGroupAddon>
+                  <SearchIcon />
+                </InputGroupAddon>
+              </InputGroup>
+            )}
           </header>
           <div id="dashboard" hidden={view !== "dashboard"}>
             <Dashboard filter={query} />
