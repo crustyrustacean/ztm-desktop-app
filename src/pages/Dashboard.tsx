@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import { Button } from "@/components/ui/button";
+import CourseCard from "@/components/CourseCard";
 import "./Dashboard.css";
 
 /** Milliseconds until the next Monday 07:00 UTC, when Rust next treats a sync as due. */
@@ -128,11 +129,23 @@ function Dashboard({ filter }: DashboardProps) {
           )}
         </div>
       )}
-      <ul className="course-list" aria-labelledby="courses-heading">
-        {visibleCourses.map((course, index) => (
-          <li key={`${index}-${course}`}>{course}</li>
-        ))}
-      </ul>
+      {courses.length > 0 && visibleCourses.length === 0 && (
+        <p className="mt-4 text-muted-foreground [overflow-wrap:anywhere]">
+          No courses match "{filter.trim()}".
+        </p>
+      )}
+      {visibleCourses.length > 0 && (
+        <ul
+          className="mt-4 grid grid-cols-[repeat(auto-fill,minmax(min(100%,14rem),1fr))] list-none gap-4 p-0"
+          aria-labelledby="courses-heading"
+        >
+          {visibleCourses.map((course, index) => (
+            <li key={`${index}-${course}`}>
+              <CourseCard name={course} />
+            </li>
+          ))}
+        </ul>
+      )}
     </main>
   );
 }
