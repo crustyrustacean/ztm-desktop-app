@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import { Button } from "@/components/ui/button";
 import CourseCard from "@/components/CourseCard";
+import { type Course, courseImageSrc } from "@/lib/courses";
 import "./Dashboard.css";
 
 /** Milliseconds until the next Monday 07:00 UTC, when Rust next treats a sync as due. */
@@ -30,7 +31,7 @@ type DashboardProps = {
 };
 
 function Dashboard({ filter }: DashboardProps) {
-  const [courses, setCourses] = useState<string[]>([]);
+  const [courses, setCourses] = useState<Course[]>([]);
   const [syncing, setSyncing] = useState(true);
   const [error, setError] = useState<SyncError | null>(null);
   const mounted = useRef(true);
@@ -46,7 +47,7 @@ function Dashboard({ filter }: DashboardProps) {
     setSyncing(true);
     try {
       // Rust skips the check unless one is due (or forced); null means unchanged.
-      const updatedCourses = await invoke<string[] | null>("sync_courses", {
+      const updatedCourses = await invoke<Course[] | null>("sync_courses", {
         force,
       });
       if (!mounted.current) return;
@@ -80,7 +81,7 @@ function Dashboard({ filter }: DashboardProps) {
       }
 
       try {
-        const cachedCourses = await invoke<string[] | null>("load_courses");
+        const cachedCourses = await invoke<Course[] | null>("load_courses");
         if (!cancelled && cachedCourses) {
           setCourses(cachedCourses);
         }
@@ -100,7 +101,7 @@ function Dashboard({ filter }: DashboardProps) {
     };
   }, [syncCourses]);
 
-  const visibleCourses = courses.filter((course) => course.toLowerCase().includes(filter.toLowerCase()));
+  const visibleCourses = courses.filter((course) => course.name.toLowerCase().includes(filter.toLowerCase()));
 
   return (
 
@@ -132,8 +133,8 @@ function Dashboard({ filter }: DashboardProps) {
       {visibleCourses.length > 0 && (
         <ul className="course-grid" aria-labelledby="courses-heading">
           {visibleCourses.map((course, index) => (
-            <li key={`${index}-${course}`}>
-              <CourseCard name={course} />
+            <li key={`${index}-${course.name}`}>
+              <CourseCard name={course.name} imageSrc={courseImageSrc(course)} />
             </li>
           ))}
         </ul>

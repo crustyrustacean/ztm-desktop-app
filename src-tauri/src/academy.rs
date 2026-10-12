@@ -1,4 +1,5 @@
 use std::{
+    collections::HashSet,
     fs,
     io::Write,
     path::{Path, PathBuf},
@@ -9,8 +10,10 @@ use reqwest::{StatusCode, header};
 use serde::{Deserialize, Serialize};
 use tauri::Manager;
 
-const ACADEMY_URL: &str =
-    "https://raw.githubusercontent.com/markodowd/zero-to-mastery-links/main/academy.csv";
+use crate::images::{self, CourseImages};
+
+// Fork branch that adds the `image_url` column; switch back to markodowd/main once merged upstream.
+const ACADEMY_URL: &str = "https://raw.githubusercontent.com/mnichols08/zero-to-mastery-links/feat/sync-course-images/academy.csv";
 const MAX_CSV_BYTES: usize = 2 * 1024 * 1024;
 
 const WEEK_SECS: u64 = 7 * 24 * 60 * 60;
@@ -18,12 +21,41 @@ const WEEK_SECS: u64 = 7 * 24 * 60 * 60;
 // 1970-01-05 07:00 UTC was a Monday, so every weekly boundary is this plus whole weeks.
 const FIRST_MONDAY_SYNC_SECS: u64 = (4 * 24 + 7) * 60 * 60;
 
-fn parse_courses(bytes: &[u8]) -> Result<Vec<String>, String> {
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Course {
+    name: String,
+    /// Served to the webview through the `course-image` protocol.
+    image_id: Option<String>,
+    #[serde(skip)]
+    image_url: Option<String>,
+}
+
+impl Course {
+    fn new(name: String, image_url: Option<String>) -> Self {
+        Self {
+            name,
+            image_id: image_url.as_deref().map(images::image_id),
+            image_url,
+        }
+    }
+}
+
+/// Only absolute HTTPS URLs are fetched; anything else leaves the course without artwork.
+fn parse_image_url(value: &str) -> Option<String> {
+    reqwest::Url::parse(value.trim())
+        .ok()
+        .filter(|url| url.scheme() == "https" && url.has_host())
+        .map(String::from)
+}
+
+fn parse_courses(bytes: &[u8]) -> Result<Vec<Course>, String> {
     if bytes.len() > MAX_CSV_BYTES {
         return Err("Academy CSV exceeds the 2 MiB size limit.".into());
     }
 
     // Flexible parsing tolerates upstream adding columns; only `course` is required.
+    // `image_url` is optional so the upstream CSV, which lacks it, still parses.
     let mut reader = csv::ReaderBuilder::new().flexible(true).from_reader(bytes);
     let headers = reader
         .headers()
@@ -32,6 +64,9 @@ fn parse_courses(bytes: &[u8]) -> Result<Vec<String>, String> {
         .iter()
         .position(|header| header.trim() == "course")
         .ok_or("Academy CSV must have a course column.")?;
+    let image_column = headers
+        .iter()
+        .position(|header| header.trim() == "image_url");
 
     let mut courses = Vec::new();
     for record in reader.records() {
@@ -40,7 +75,10 @@ fn parse_courses(bytes: &[u8]) -> Result<Vec<String>, String> {
         if name.is_empty() {
             return Err("Academy CSV contains an empty course name.".into());
         }
-        courses.push(name.to_owned());
+        let image_url = image_column
+            .and_then(|column| record.get(column))
+            .and_then(parse_image_url);
+        courses.push(Course::new(name.to_owned(), image_url));
     }
 
     if courses.is_empty() {
@@ -49,7 +87,7 @@ fn parse_courses(bytes: &[u8]) -> Result<Vec<String>, String> {
     Ok(courses)
 }
 
-fn cache_path(app: &tauri::AppHandle) -> Result<PathBuf, String> {
+pub(crate) fn cache_path(app: &tauri::AppHandle) -> Result<PathBuf, String> {
     app.path()
         .app_local_data_dir()
         .map(|directory| directory.join("data").join("academy.csv"))
@@ -60,7 +98,7 @@ fn sync_state_path(cache_path: &Path) -> PathBuf {
     cache_path.with_file_name("academy-sync.json")
 }
 
-fn read_cache(path: &Path) -> Result<Option<Vec<String>>, String> {
+fn read_cache(path: &Path) -> Result<Option<Vec<Course>>, String> {
     match fs::read(path) {
         Ok(bytes) => parse_courses(&bytes).map(Some),
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
@@ -68,7 +106,7 @@ fn read_cache(path: &Path) -> Result<Option<Vec<String>>, String> {
     }
 }
 
-fn write_atomic(path: &Path, bytes: &[u8]) -> Result<(), String> {
+pub(crate) fn write_atomic(path: &Path, bytes: &[u8]) -> Result<(), String> {
     let directory = path
         .parent()
         .ok_or("Academy data path has no parent directory.")?;
@@ -85,17 +123,18 @@ fn write_atomic(path: &Path, bytes: &[u8]) -> Result<(), String> {
     Ok(())
 }
 
-fn save_cache(path: &Path, bytes: &[u8]) -> Result<Vec<String>, String> {
+fn save_cache(path: &Path, bytes: &[u8]) -> Result<Vec<Course>, String> {
     let courses = parse_courses(bytes)?;
     write_atomic(path, bytes)?;
     Ok(courses)
 }
 
-/// When the last successful check happened and the ETag of the cached CSV.
+/// When the last successful check happened, and the URL and ETag of the cached CSV.
 #[derive(Debug, Default, PartialEq, Serialize, Deserialize)]
 struct SyncState {
     checked_at: u64,
     etag: Option<String>,
+    source: Option<String>,
 }
 
 fn read_sync_state(path: &Path) -> SyncState {
@@ -182,7 +221,7 @@ fn apply_download(
     download: Download,
     previous_etag: Option<String>,
     now: u64,
-) -> Result<Option<Vec<String>>, String> {
+) -> Result<Option<Vec<Course>>, String> {
     let (courses, etag) = match download {
         Download::NotModified => (None, previous_etag),
         Download::Modified { bytes, etag } => {
@@ -200,12 +239,13 @@ fn apply_download(
         &SyncState {
             checked_at: now,
             etag,
+            source: Some(ACADEMY_URL.to_owned()),
         },
     );
     Ok(courses)
 }
 
-async fn run_blocking<T: Send + 'static>(
+pub(crate) async fn run_blocking<T: Send + 'static>(
     task: impl FnOnce() -> T + Send + 'static,
 ) -> Result<T, String> {
     tauri::async_runtime::spawn_blocking(task)
@@ -213,19 +253,33 @@ async fn run_blocking<T: Send + 'static>(
         .map_err(|error| format!("Academy cache task failed: {error}"))
 }
 
-#[tauri::command]
-pub async fn load_courses(app: tauri::AppHandle) -> Result<Option<Vec<String>>, String> {
-    let path = cache_path(&app)?;
-    run_blocking(move || read_cache(&path)).await?
+/// Lets the image protocol resolve the IDs in `courses` back to their remote URLs.
+fn remember_images(app: &tauri::AppHandle, courses: &[Course]) {
+    app.state::<CourseImages>().remember(
+        courses
+            .iter()
+            .filter_map(|course| Some((course.image_id.as_deref()?, course.image_url.as_deref()?))),
+    );
 }
 
-/// Checks upstream for course changes on first run, then once per weekly boundary
-/// (Monday 07:00 UTC) unless `force` is set. Returns `None` when the cache is unchanged.
+#[tauri::command]
+pub async fn load_courses(app: tauri::AppHandle) -> Result<Option<Vec<Course>>, String> {
+    let path = cache_path(&app)?;
+    let courses = run_blocking(move || read_cache(&path)).await??;
+    if let Some(courses) = &courses {
+        remember_images(&app, courses);
+    }
+    Ok(courses)
+}
+
+/// Checks upstream for course changes on first run or when `ACADEMY_URL` changes, then
+/// once per weekly boundary (Monday 07:00 UTC) unless `force` is set. Returns `None`
+/// when the cache is unchanged.
 #[tauri::command]
 pub async fn sync_courses(
     app: tauri::AppHandle,
     force: bool,
-) -> Result<Option<Vec<String>>, String> {
+) -> Result<Option<Vec<Course>>, String> {
     let path = cache_path(&app)?;
     let (state, has_valid_cache) = {
         let path = path.clone();
@@ -236,26 +290,44 @@ pub async fn sync_courses(
         .await?
     };
     let now = unix_now();
-    if has_valid_cache && !force && !is_sync_due(state.checked_at, now) {
+    let same_source = state.source.as_deref() == Some(ACADEMY_URL);
+    if has_valid_cache && same_source && !force && !is_sync_due(state.checked_at, now) {
         return Ok(None);
     }
 
-    // Without a valid cache, a 304 would leave nothing to show, so always fetch the body.
-    let etag = state.etag.filter(|_| has_valid_cache);
+    // Without a valid cache from this source, a 304 would leave nothing to show (or keep
+    // the old source's data), so always fetch the body.
+    let etag = state.etag.filter(|_| has_valid_cache && same_source);
     let download = download_csv(etag.as_deref()).await?;
-    run_blocking(move || apply_download(&path, download, etag, now)).await?
+    let courses = {
+        let path = path.clone();
+        run_blocking(move || apply_download(&path, download, etag, now)).await??
+    };
+    if let Some(courses) = &courses {
+        remember_images(&app, courses);
+        let keep: HashSet<String> = courses
+            .iter()
+            .filter_map(|course| course.image_id.clone())
+            .collect();
+        run_blocking(move || images::prune(&images::images_dir(&path), &keep)).await?;
+    }
+    Ok(courses)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
+    fn names(courses: Vec<Course>) -> Vec<String> {
+        courses.into_iter().map(|course| course.name).collect()
+    }
+
     #[test]
     fn parses_names_only_in_source_order() {
         let bytes =
             b"course,url\r\nRust,https://example.com\r\n\"React, Redux\", \r\n Python ,\r\n";
         assert_eq!(
-            parse_courses(bytes).unwrap(),
+            names(parse_courses(bytes).unwrap()),
             ["Rust", "React, Redux", "Python"]
         );
     }
@@ -264,7 +336,7 @@ mod tests {
     fn supports_escaped_quotes_and_multiline_names() {
         let bytes = b"course,url\n\"Learn \"\"Rust\"\"\",\n\"Web\nDevelopment\",\n";
         assert_eq!(
-            parse_courses(bytes).unwrap(),
+            names(parse_courses(bytes).unwrap()),
             ["Learn \"Rust\"", "Web\nDevelopment"]
         );
     }
@@ -286,7 +358,29 @@ mod tests {
     #[test]
     fn finds_course_column_by_name_and_ignores_extra_columns() {
         let bytes = b"url,course,category\nhttps://example.com,Rust,Systems\n,Python\n";
-        assert_eq!(parse_courses(bytes).unwrap(), ["Rust", "Python"]);
+        assert_eq!(names(parse_courses(bytes).unwrap()), ["Rust", "Python"]);
+    }
+
+    #[test]
+    fn reads_optional_https_image_urls() {
+        let bytes = b"course,image_url\nRust,https://cdn.example.com/rust.png\nGo,\nC,http://cdn.example.com/c.png\nJS,not a url\n";
+        let courses = parse_courses(bytes).unwrap();
+        let rust_url = "https://cdn.example.com/rust.png";
+        assert_eq!(courses[0].image_url.as_deref(), Some(rust_url));
+        assert_eq!(courses[0].image_id, Some(images::image_id(rust_url)));
+        for course in &courses[1..] {
+            assert_eq!((&course.image_id, &course.image_url), (&None, &None));
+        }
+    }
+
+    #[test]
+    fn serializes_image_id_but_not_remote_url() {
+        let url = "https://cdn.example.com/rust.png";
+        let course = Course::new("Rust".into(), Some(url.into()));
+        assert_eq!(
+            serde_json::to_value(&course).unwrap(),
+            serde_json::json!({ "name": "Rust", "imageId": images::image_id(url) })
+        );
     }
 
     #[test]
@@ -309,7 +403,7 @@ mod tests {
         let path = directory.path().join("data").join("academy.csv");
         save_cache(&path, b"course,url\nRust,\n").unwrap();
         save_cache(&path, b"course,url\nPython,\n").unwrap();
-        assert_eq!(read_cache(&path).unwrap(), Some(vec!["Python".into()]));
+        assert_eq!(names(read_cache(&path).unwrap().unwrap()), ["Python"]);
         assert_eq!(fs::read_dir(path.parent().unwrap()).unwrap().count(), 1);
     }
 
@@ -362,8 +456,8 @@ mod tests {
             etag: etag("a"),
         };
         assert_eq!(
-            apply_download(&path, first, None, 1).unwrap(),
-            Some(vec!["Rust".into()])
+            names(apply_download(&path, first, None, 1).unwrap().unwrap()),
+            ["Rust"]
         );
 
         let same = Download::Modified {
@@ -380,7 +474,8 @@ mod tests {
             read_sync_state(&sync_state_path(&path)),
             SyncState {
                 checked_at: 3,
-                etag: etag("b")
+                etag: etag("b"),
+                source: Some(ACADEMY_URL.into()),
             }
         );
     }
