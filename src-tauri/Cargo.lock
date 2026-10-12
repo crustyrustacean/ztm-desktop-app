@@ -5157,6 +5157,7 @@ name = "ztm-desktop-app"
 version = "0.1.0"
 dependencies = [
  "csv",
+ "gtk",
  "reqwest 0.12.28",
  "serde",
  "serde_json",
@@ -5164,6 +5165,7 @@ dependencies = [
  "tauri-build",
  "tauri-plugin-opener",
  "tempfile",
+ "webkit2gtk",
 ]
 
 [[package]]
