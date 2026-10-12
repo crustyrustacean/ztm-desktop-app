@@ -1,4 +1,4 @@
-import { LayoutDashboard } from "lucide-react";
+import { Globe, LayoutDashboard } from "lucide-react";
 import { SiDiscord } from "react-icons/si";
 import {
   Sidebar,
@@ -9,8 +9,14 @@ import {
   SidebarMenuItem,
 } from "@/components/ui/sidebar";
 import { openDiscord } from "@/lib/discord";
+import type { View } from "@/lib/view";
 
-export function AppSidebar() {
+type AppSidebarProps = {
+  view: View;
+  onViewChange: (view: View) => void;
+};
+
+export function AppSidebar({ view, onViewChange }: AppSidebarProps) {
   return (
     <Sidebar collapsible="icon">
       <SidebarContent>
@@ -18,13 +24,24 @@ export function AppSidebar() {
           <SidebarMenu>
             <SidebarMenuItem>
               <SidebarMenuButton
-                render={<a href="#dashboard" />}
-                isActive
-                aria-current="page"
+                onClick={() => onViewChange("dashboard")}
+                isActive={view === "dashboard"}
+                aria-current={view === "dashboard" ? "page" : undefined}
                 tooltip="Dashboard"
               >
                 <LayoutDashboard />
                 <span>Dashboard</span>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+            <SidebarMenuItem>
+              <SidebarMenuButton
+                onClick={() => onViewChange("web-view")}
+                isActive={view === "web-view"}
+                aria-current={view === "web-view" ? "page" : undefined}
+                tooltip="Web View"
+              >
+                <Globe />
+                <span>Web View</span>
               </SidebarMenuButton>
             </SidebarMenuItem>
             <SidebarMenuItem>

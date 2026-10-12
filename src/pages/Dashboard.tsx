@@ -99,16 +99,19 @@ function Dashboard({ filter }: DashboardProps) {
     };
   }, [syncCourses]);
 
-  const visibleCourses = courses.filter((course) => course.toLowerCase().includes(filter.toLowerCase()));
+  const visibleCourses = courses.filter((course) =>
+    course.toLowerCase().includes(filter.toLowerCase()),
+  );
 
   return (
-
     <main className="dashboard">
       <h1>Dashboard</h1>
       <h2 id="courses-heading">Courses</h2>
       {syncing && (
         <p role="status">
-          {courses.length ? "Checking for course updates..." : "Loading courses..."}
+          {courses.length
+            ? "Checking for course updates..."
+            : "Loading courses..."}
         </p>
       )}
       {error && (
