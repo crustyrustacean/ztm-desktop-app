@@ -30,22 +30,6 @@
   overflow-wrap: anywhere;
 }
 
-/* Columns fill the available width, so the grid adapts to the window and sidebar state. */
-.course-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(min(100%, 14rem), 1fr));
-  gap: 1rem;
-  margin-top: 1rem;
-  list-style: none;
-  padding: 0;
-}
-
-.course-empty {
-  margin-top: 1rem;
-  color: var(--muted-foreground);
-  overflow-wrap: anywhere;
-}
-
 @media (prefers-color-scheme: dark) {
   :root {
     color: #f6f6f6;

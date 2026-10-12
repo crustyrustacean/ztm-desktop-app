@@ -100,16 +100,19 @@ function Dashboard({ filter }: DashboardProps) {
     };
   }, [syncCourses]);
 
-  const visibleCourses = courses.filter((course) => course.toLowerCase().includes(filter.toLowerCase()));
+  const visibleCourses = courses.filter((course) =>
+    course.toLowerCase().includes(filter.toLowerCase()),
+  );
 
   return (
-
     <main className="dashboard">
       <h1>Dashboard</h1>
       <h2 id="courses-heading">Courses</h2>
       {syncing && (
         <p role="status">
-          {courses.length ? "Checking for course updates..." : "Loading courses..."}
+          {courses.length
+            ? "Checking for course updates..."
+            : "Loading courses..."}
         </p>
       )}
       {error && (
@@ -127,10 +130,15 @@ function Dashboard({ filter }: DashboardProps) {
         </div>
       )}
       {courses.length > 0 && visibleCourses.length === 0 && (
-        <p className="course-empty">No courses match "{filter.trim()}".</p>
+        <p className="mt-4 text-muted-foreground [overflow-wrap:anywhere]">
+          No courses match "{filter.trim()}".
+        </p>
       )}
       {visibleCourses.length > 0 && (
-        <ul className="course-grid" aria-labelledby="courses-heading">
+        <ul
+          className="mt-4 grid grid-cols-[repeat(auto-fill,minmax(min(100%,14rem),1fr))] list-none gap-4 p-0"
+          aria-labelledby="courses-heading"
+        >
           {visibleCourses.map((course, index) => (
             <li key={`${index}-${course}`}>
               <CourseCard name={course} />
