@@ -20,9 +20,9 @@ Neither command exposes course URLs.
 
 ## Parsing
 
-`reqwest` downloads the CSV and the `csv` crate reads the `course` column by name,
+`reqwest` downloads the CSV and the `csv` crate reads the `course_name` column by name,
 including quoted names containing commas; other columns are ignored. A CSV with
-no `course` column, an empty course name, or no courses is rejected.
+no `course_name` column, an empty course name, or no courses is rejected.
 
 ## Local cache
 

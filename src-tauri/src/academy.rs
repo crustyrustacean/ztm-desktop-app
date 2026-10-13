@@ -23,15 +23,15 @@ fn parse_courses(bytes: &[u8]) -> Result<Vec<String>, String> {
         return Err("Academy CSV exceeds the 2 MiB size limit.".into());
     }
 
-    // Flexible parsing tolerates upstream adding columns; only `course` is required.
+    // Flexible parsing tolerates upstream adding columns; only `course_name` is required.
     let mut reader = csv::ReaderBuilder::new().flexible(true).from_reader(bytes);
     let headers = reader
         .headers()
         .map_err(|error| format!("Could not read academy CSV headers: {error}"))?;
     let course_column = headers
         .iter()
-        .position(|header| header.trim() == "course")
-        .ok_or("Academy CSV must have a course column.")?;
+        .position(|header| header.trim() == "course_name")
+        .ok_or("Academy CSV must have a course_name column.")?;
 
     let mut courses = Vec::new();
     for record in reader.records() {
@@ -253,7 +253,7 @@ mod tests {
     #[test]
     fn parses_names_only_in_source_order() {
         let bytes =
-            b"course,url\r\nRust,https://example.com\r\n\"React, Redux\", \r\n Python ,\r\n";
+            b"course_name,url\r\nRust,https://example.com\r\n\"React, Redux\", \r\n Python ,\r\n";
         assert_eq!(
             parse_courses(bytes).unwrap(),
             ["Rust", "React, Redux", "Python"]
@@ -262,7 +262,7 @@ mod tests {
 
     #[test]
     fn supports_escaped_quotes_and_multiline_names() {
-        let bytes = b"course,url\n\"Learn \"\"Rust\"\"\",\n\"Web\nDevelopment\",\n";
+        let bytes = b"course_name,url\n\"Learn \"\"Rust\"\"\",\n\"Web\nDevelopment\",\n";
         assert_eq!(
             parse_courses(bytes).unwrap(),
             ["Learn \"Rust\"", "Web\nDevelopment"]
@@ -273,11 +273,12 @@ mod tests {
     fn rejects_invalid_headers_rows_and_empty_lists() {
         for bytes in [
             &b"name,url\nRust,\n"[..],
-            &b"course,url\n"[..],
-            &b"course,url\n ,\n"[..],
-            &b"url,course\nhttps://example.com\n"[..],
+            &b"course,url\nRust,\n"[..],
+            &b"course_name,url\n"[..],
+            &b"course_name,url\n ,\n"[..],
+            &b"url,course_name\nhttps://example.com\n"[..],
             &b"<!doctype html><html>error</html>"[..],
-            &b"course,url\n\xff,\n"[..],
+            &b"course_name,url\n\xff,\n"[..],
         ] {
             assert!(parse_courses(bytes).is_err());
         }
@@ -285,7 +286,7 @@ mod tests {
 
     #[test]
     fn finds_course_column_by_name_and_ignores_extra_columns() {
-        let bytes = b"url,course,category\nhttps://example.com,Rust,Systems\n,Python\n";
+        let bytes = b"url,course_name,category\nhttps://example.com,Rust,Systems\n,Python\n";
         assert_eq!(parse_courses(bytes).unwrap(), ["Rust", "Python"]);
     }
 
@@ -307,8 +308,8 @@ mod tests {
     fn persists_and_replaces_cache_without_leaving_temporary_files() {
         let directory = tempfile::tempdir().unwrap();
         let path = directory.path().join("data").join("academy.csv");
-        save_cache(&path, b"course,url\nRust,\n").unwrap();
-        save_cache(&path, b"course,url\nPython,\n").unwrap();
+        save_cache(&path, b"course_name,url\nRust,\n").unwrap();
+        save_cache(&path, b"course_name,url\nPython,\n").unwrap();
         assert_eq!(read_cache(&path).unwrap(), Some(vec!["Python".into()]));
         assert_eq!(fs::read_dir(path.parent().unwrap()).unwrap().count(), 1);
     }
@@ -317,9 +318,9 @@ mod tests {
     fn invalid_download_preserves_previous_cache() {
         let directory = tempfile::tempdir().unwrap();
         let path = directory.path().join("academy.csv");
-        let valid = b"course,url\nRust,\n";
+        let valid = b"course_name,url\nRust,\n";
         save_cache(&path, valid).unwrap();
-        assert!(save_cache(&path, b"course,url\n").is_err());
+        assert!(save_cache(&path, b"course_name,url\n").is_err());
         assert_eq!(fs::read(&path).unwrap(), valid);
     }
 
@@ -354,7 +355,7 @@ mod tests {
     fn unchanged_downloads_keep_cache_and_record_check() {
         let directory = tempfile::tempdir().unwrap();
         let path = directory.path().join("academy.csv");
-        let bytes = b"course,url\nRust,\n".to_vec();
+        let bytes = b"course_name,url\nRust,\n".to_vec();
         let etag = |tag: &str| Some(format!("\"{tag}\""));
 
         let first = Download::Modified {
