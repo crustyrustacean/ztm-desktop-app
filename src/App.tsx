@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { SearchIcon } from "lucide-react";
 import Dashboard from "./pages/Dashboard";
+import Favourites from "./pages/Favourites";
 import Options from "./pages/Options";
 import { AppSidebar } from "@/components/app-sidebar";
 import {
@@ -11,11 +12,15 @@ import {
 import { WebView } from "@/components/web-view";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { useCourses } from "@/hooks/use-courses";
+import { useFavourites } from "@/hooks/use-favourites";
 import type { View } from "@/lib/view";
 
 function App() {
   const [query, setQuery] = useState("");
   const [view, setView] = useState<View>("dashboard");
+  const { courses, syncing, error, retry } = useCourses();
+  const { favourites, toggleFavourite } = useFavourites();
 
   return (
     <TooltipProvider>
@@ -24,7 +29,7 @@ function App() {
         <div className="min-w-0 flex-1">
           <header className="flex h-12 items-center border-b px-4">
             <SidebarTrigger />
-            {view === "dashboard" && (
+            {(view === "dashboard" || view === "favourites") && (
               <InputGroup className="ml-2 max-w-sm">
                 <InputGroupInput
                   type="search"
@@ -40,7 +45,23 @@ function App() {
             )}
           </header>
           <div id="dashboard" hidden={view !== "dashboard"}>
-            <Dashboard filter={query} />
+            <Dashboard
+              filter={query}
+              courses={courses}
+              syncing={syncing}
+              error={error}
+              onRetry={retry}
+              favourites={favourites}
+              onToggleFavourite={toggleFavourite}
+            />
+          </div>
+          <div id="favourites" hidden={view !== "favourites"}>
+            <Favourites
+              filter={query}
+              courses={courses}
+              favourites={favourites}
+              onToggleFavourite={toggleFavourite}
+            />
           </div>
           <div id="web-view" hidden={view !== "web-view"}>
             <WebView active={view === "web-view"} />

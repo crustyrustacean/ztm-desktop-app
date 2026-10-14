@@ -1,4 +1,4 @@
-import { Globe, LayoutDashboard, Settings } from "lucide-react";
+import { Globe, LayoutDashboard, Settings, Star } from "lucide-react";
 import { SiDiscord } from "react-icons/si";
 import {
   Sidebar,
@@ -31,6 +31,17 @@ export function AppSidebar({ view, onViewChange }: AppSidebarProps) {
               >
                 <LayoutDashboard />
                 <span>Dashboard</span>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+            <SidebarMenuItem>
+              <SidebarMenuButton
+                onClick={() => onViewChange("favourites")}
+                isActive={view === "favourites"}
+                aria-current={view === "favourites" ? "page" : undefined}
+                tooltip="Favourites"
+              >
+                <Star />
+                <span>Favourites</span>
               </SidebarMenuButton>
             </SidebarMenuItem>
             <SidebarMenuItem>
