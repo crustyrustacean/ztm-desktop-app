@@ -20,6 +20,8 @@ pub enum Theme {
 #[serde(default)]
 pub struct AppState {
     theme: Option<Theme>,
+    /// Uuids of courses the user has starred.
+    favourites: Vec<String>,
 }
 
 fn state_path(app: &tauri::AppHandle) -> Result<PathBuf, String> {
@@ -73,17 +75,18 @@ mod tests {
     }
 
     #[test]
-    fn round_trips_theme() {
+    fn round_trips_state() {
         let directory = tempfile::tempdir().unwrap();
         let path = directory.path().join("data").join("state.json");
         let state = AppState {
             theme: Some(Theme::Dark),
+            favourites: vec!["39fcbbb8".into()],
         };
         write_state(&path, &state).unwrap();
         assert_eq!(read_state(&path), state);
         assert_eq!(
             serde_json::from_slice::<serde_json::Value>(&fs::read(&path).unwrap()).unwrap(),
-            serde_json::json!({ "theme": "dark" })
+            serde_json::json!({ "theme": "dark", "favourites": ["39fcbbb8"] })
         );
     }
 

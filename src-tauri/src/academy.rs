@@ -18,29 +18,42 @@ const WEEK_SECS: u64 = 7 * 24 * 60 * 60;
 // 1970-01-05 07:00 UTC was a Monday, so every weekly boundary is this plus whole weeks.
 const FIRST_MONDAY_SYNC_SECS: u64 = (4 * 24 + 7) * 60 * 60;
 
-fn parse_courses(bytes: &[u8]) -> Result<Vec<String>, String> {
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct Course {
+    uuid: String,
+    name: String,
+}
+
+fn parse_courses(bytes: &[u8]) -> Result<Vec<Course>, String> {
     if bytes.len() > MAX_CSV_BYTES {
         return Err("Academy CSV exceeds the 2 MiB size limit.".into());
     }
 
-    // Flexible parsing tolerates upstream adding columns; only `course_name` is required.
+    // Flexible parsing tolerates upstream adding columns; only `uuid` and `course_name` are required.
     let mut reader = csv::ReaderBuilder::new().flexible(true).from_reader(bytes);
     let headers = reader
         .headers()
         .map_err(|error| format!("Could not read academy CSV headers: {error}"))?;
-    let course_column = headers
-        .iter()
-        .position(|header| header.trim() == "course_name")
-        .ok_or("Academy CSV must have a course_name column.")?;
+    let column = |name: &str| headers.iter().position(|header| header.trim() == name);
+    let uuid_column = column("uuid").ok_or("Academy CSV must have a uuid column.")?;
+    let course_column =
+        column("course_name").ok_or("Academy CSV must have a course_name column.")?;
 
     let mut courses = Vec::new();
     for record in reader.records() {
         let record = record.map_err(|error| format!("Invalid academy CSV row: {error}"))?;
+        let uuid = record.get(uuid_column).unwrap_or_default().trim();
+        if uuid.is_empty() {
+            return Err("Academy CSV contains an empty course uuid.".into());
+        }
         let name = record.get(course_column).unwrap_or_default().trim();
         if name.is_empty() {
             return Err("Academy CSV contains an empty course name.".into());
         }
-        courses.push(name.to_owned());
+        courses.push(Course {
+            uuid: uuid.to_owned(),
+            name: name.to_owned(),
+        });
     }
 
     if courses.is_empty() {
@@ -60,7 +73,7 @@ fn sync_state_path(cache_path: &Path) -> PathBuf {
     cache_path.with_file_name("academy-sync.json")
 }
 
-fn read_cache(path: &Path) -> Result<Option<Vec<String>>, String> {
+fn read_cache(path: &Path) -> Result<Option<Vec<Course>>, String> {
     match fs::read(path) {
         Ok(bytes) => parse_courses(&bytes).map(Some),
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
@@ -69,9 +82,7 @@ fn read_cache(path: &Path) -> Result<Option<Vec<String>>, String> {
 }
 
 pub(crate) fn write_atomic(path: &Path, bytes: &[u8]) -> Result<(), String> {
-    let directory = path
-        .parent()
-        .ok_or("Data path has no parent directory.")?;
+    let directory = path.parent().ok_or("Data path has no parent directory.")?;
     fs::create_dir_all(directory)
         .map_err(|error| format!("Could not create data folder: {error}"))?;
     // A same-directory temporary file keeps the previous file intact until replacement.
@@ -85,7 +96,7 @@ pub(crate) fn write_atomic(path: &Path, bytes: &[u8]) -> Result<(), String> {
     Ok(())
 }
 
-fn save_cache(path: &Path, bytes: &[u8]) -> Result<Vec<String>, String> {
+fn save_cache(path: &Path, bytes: &[u8]) -> Result<Vec<Course>, String> {
     let courses = parse_courses(bytes)?;
     write_atomic(path, bytes)?;
     Ok(courses)
@@ -182,7 +193,7 @@ fn apply_download(
     download: Download,
     previous_etag: Option<String>,
     now: u64,
-) -> Result<Option<Vec<String>>, String> {
+) -> Result<Option<Vec<Course>>, String> {
     let (courses, etag) = match download {
         Download::NotModified => (None, previous_etag),
         Download::Modified { bytes, etag } => {
@@ -214,7 +225,7 @@ async fn run_blocking<T: Send + 'static>(
 }
 
 #[tauri::command]
-pub async fn load_courses(app: tauri::AppHandle) -> Result<Option<Vec<String>>, String> {
+pub async fn load_courses(app: tauri::AppHandle) -> Result<Option<Vec<Course>>, String> {
     let path = cache_path(&app)?;
     run_blocking(move || read_cache(&path)).await?
 }
@@ -225,7 +236,7 @@ pub async fn load_courses(app: tauri::AppHandle) -> Result<Option<Vec<String>>, 
 pub async fn sync_courses(
     app: tauri::AppHandle,
     force: bool,
-) -> Result<Option<Vec<String>>, String> {
+) -> Result<Option<Vec<Course>>, String> {
     let path = cache_path(&app)?;
     let (state, has_valid_cache) = {
         let path = path.clone();
@@ -250,35 +261,46 @@ pub async fn sync_courses(
 mod tests {
     use super::*;
 
+    fn courses(entries: &[(&str, &str)]) -> Vec<Course> {
+        entries
+            .iter()
+            .map(|(uuid, name)| Course {
+                uuid: (*uuid).into(),
+                name: (*name).into(),
+            })
+            .collect()
+    }
+
     #[test]
-    fn parses_names_only_in_source_order() {
-        let bytes =
-            b"course_name,url\r\nRust,https://example.com\r\n\"React, Redux\", \r\n Python ,\r\n";
+    fn parses_uuids_and_names_in_source_order() {
+        let bytes = b"uuid,course_name,url\r\n a1 ,Rust,https://example.com\r\nb2,\"React, Redux\", \r\nc3, Python ,\r\n";
         assert_eq!(
             parse_courses(bytes).unwrap(),
-            ["Rust", "React, Redux", "Python"]
+            courses(&[("a1", "Rust"), ("b2", "React, Redux"), ("c3", "Python")])
         );
     }
 
     #[test]
     fn supports_escaped_quotes_and_multiline_names() {
-        let bytes = b"course_name,url\n\"Learn \"\"Rust\"\"\",\n\"Web\nDevelopment\",\n";
+        let bytes = b"uuid,course_name,url\na1,\"Learn \"\"Rust\"\"\",\nb2,\"Web\nDevelopment\",\n";
         assert_eq!(
             parse_courses(bytes).unwrap(),
-            ["Learn \"Rust\"", "Web\nDevelopment"]
+            courses(&[("a1", "Learn \"Rust\""), ("b2", "Web\nDevelopment")])
         );
     }
 
     #[test]
     fn rejects_invalid_headers_rows_and_empty_lists() {
         for bytes in [
-            &b"name,url\nRust,\n"[..],
-            &b"course,url\nRust,\n"[..],
-            &b"course_name,url\n"[..],
-            &b"course_name,url\n ,\n"[..],
-            &b"url,course_name\nhttps://example.com\n"[..],
+            &b"uuid,name,url\na1,Rust,\n"[..],
+            &b"uuid,course,url\na1,Rust,\n"[..],
+            &b"course_name,url\nRust,\n"[..],
+            &b"uuid,course_name,url\n"[..],
+            &b"uuid,course_name,url\na1, ,\n"[..],
+            &b"uuid,course_name,url\n ,Rust,\n"[..],
+            &b"uuid,url,course_name\na1,https://example.com\n"[..],
             &b"<!doctype html><html>error</html>"[..],
-            &b"course_name,url\n\xff,\n"[..],
+            &b"uuid,course_name,url\na1,\xff,\n"[..],
         ] {
             assert!(parse_courses(bytes).is_err());
         }
@@ -286,8 +308,12 @@ mod tests {
 
     #[test]
     fn finds_course_column_by_name_and_ignores_extra_columns() {
-        let bytes = b"url,course_name,category\nhttps://example.com,Rust,Systems\n,Python\n";
-        assert_eq!(parse_courses(bytes).unwrap(), ["Rust", "Python"]);
+        let bytes =
+            b"url,course_name,category,uuid\nhttps://example.com,Rust,Systems,a1\n,Python,,b2\n";
+        assert_eq!(
+            parse_courses(bytes).unwrap(),
+            courses(&[("a1", "Rust"), ("b2", "Python")])
+        );
     }
 
     #[test]
@@ -308,9 +334,12 @@ mod tests {
     fn persists_and_replaces_cache_without_leaving_temporary_files() {
         let directory = tempfile::tempdir().unwrap();
         let path = directory.path().join("data").join("academy.csv");
-        save_cache(&path, b"course_name,url\nRust,\n").unwrap();
-        save_cache(&path, b"course_name,url\nPython,\n").unwrap();
-        assert_eq!(read_cache(&path).unwrap(), Some(vec!["Python".into()]));
+        save_cache(&path, b"uuid,course_name\na1,Rust\n").unwrap();
+        save_cache(&path, b"uuid,course_name\nb2,Python\n").unwrap();
+        assert_eq!(
+            read_cache(&path).unwrap(),
+            Some(courses(&[("b2", "Python")]))
+        );
         assert_eq!(fs::read_dir(path.parent().unwrap()).unwrap().count(), 1);
     }
 
@@ -318,9 +347,9 @@ mod tests {
     fn invalid_download_preserves_previous_cache() {
         let directory = tempfile::tempdir().unwrap();
         let path = directory.path().join("academy.csv");
-        let valid = b"course_name,url\nRust,\n";
+        let valid = b"uuid,course_name\na1,Rust\n";
         save_cache(&path, valid).unwrap();
-        assert!(save_cache(&path, b"course_name,url\n").is_err());
+        assert!(save_cache(&path, b"uuid,course_name\n").is_err());
         assert_eq!(fs::read(&path).unwrap(), valid);
     }
 
@@ -355,7 +384,7 @@ mod tests {
     fn unchanged_downloads_keep_cache_and_record_check() {
         let directory = tempfile::tempdir().unwrap();
         let path = directory.path().join("academy.csv");
-        let bytes = b"course_name,url\nRust,\n".to_vec();
+        let bytes = b"uuid,course_name\na1,Rust\n".to_vec();
         let etag = |tag: &str| Some(format!("\"{tag}\""));
 
         let first = Download::Modified {
@@ -364,7 +393,7 @@ mod tests {
         };
         assert_eq!(
             apply_download(&path, first, None, 1).unwrap(),
-            Some(vec!["Rust".into()])
+            Some(courses(&[("a1", "Rust")]))
         );
 
         let same = Download::Modified {

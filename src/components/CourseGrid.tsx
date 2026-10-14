@@ -1,0 +1,35 @@
+import CourseCard from "@/components/CourseCard";
+import type { Course } from "@/lib/course";
+
+type CourseGridProps = {
+  courses: Course[];
+  favourites: ReadonlySet<string>;
+  onToggleFavourite: (uuid: string) => void;
+  labelledBy: string;
+};
+
+function CourseGrid({
+  courses,
+  favourites,
+  onToggleFavourite,
+  labelledBy,
+}: CourseGridProps) {
+  return (
+    <ul
+      className="mt-4 grid grid-cols-[repeat(auto-fill,minmax(min(100%,14rem),1fr))] list-none gap-4 p-0"
+      aria-labelledby={labelledBy}
+    >
+      {courses.map((course) => (
+        <li key={course.uuid}>
+          <CourseCard
+            name={course.name}
+            favourite={favourites.has(course.uuid)}
+            onToggleFavourite={() => onToggleFavourite(course.uuid)}
+          />
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+export default CourseGrid;
