@@ -23,6 +23,7 @@ function CourseGrid({
         <li key={course.uuid}>
           <CourseCard
             name={course.name}
+            imageUrl={course.imageUrl}
             favourite={favourites.has(course.uuid)}
             onToggleFavourite={() => onToggleFavourite(course.uuid)}
           />
