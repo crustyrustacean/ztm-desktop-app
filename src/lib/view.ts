@@ -1,1 +1,1 @@
-export type View = "dashboard" | "web-view";
+export type View = "dashboard" | "web-view" | "options";

@@ -1,4 +1,4 @@
-import { Globe, LayoutDashboard } from "lucide-react";
+import { Globe, LayoutDashboard, Settings } from "lucide-react";
 import { SiDiscord } from "react-icons/si";
 import {
   Sidebar,
@@ -42,6 +42,17 @@ export function AppSidebar({ view, onViewChange }: AppSidebarProps) {
               >
                 <Globe />
                 <span>Web View</span>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+            <SidebarMenuItem>
+              <SidebarMenuButton
+                onClick={() => onViewChange("options")}
+                isActive={view === "options"}
+                aria-current={view === "options" ? "page" : undefined}
+                tooltip="Options"
+              >
+                <Settings />
+                <span>Options</span>
               </SidebarMenuButton>
             </SidebarMenuItem>
             <SidebarMenuItem>

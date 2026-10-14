@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { SearchIcon } from "lucide-react";
 import Dashboard from "./pages/Dashboard";
+import Options from "./pages/Options";
 import { AppSidebar } from "@/components/app-sidebar";
 import {
   InputGroup,
@@ -43,6 +44,9 @@ function App() {
           </div>
           <div id="web-view" hidden={view !== "web-view"}>
             <WebView active={view === "web-view"} />
+          </div>
+          <div id="options" hidden={view !== "options"}>
+            <Options />
           </div>
         </div>
       </SidebarProvider>

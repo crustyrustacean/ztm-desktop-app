@@ -68,20 +68,20 @@ fn read_cache(path: &Path) -> Result<Option<Vec<String>>, String> {
     }
 }
 
-fn write_atomic(path: &Path, bytes: &[u8]) -> Result<(), String> {
+pub(crate) fn write_atomic(path: &Path, bytes: &[u8]) -> Result<(), String> {
     let directory = path
         .parent()
-        .ok_or("Academy data path has no parent directory.")?;
+        .ok_or("Data path has no parent directory.")?;
     fs::create_dir_all(directory)
-        .map_err(|error| format!("Could not create academy data folder: {error}"))?;
+        .map_err(|error| format!("Could not create data folder: {error}"))?;
     // A same-directory temporary file keeps the previous file intact until replacement.
     let mut file = tempfile::NamedTempFile::new_in(directory)
-        .map_err(|error| format!("Could not create academy data file: {error}"))?;
+        .map_err(|error| format!("Could not create data file: {error}"))?;
     file.write_all(bytes)
         .and_then(|_| file.as_file().sync_all())
-        .map_err(|error| format!("Could not write academy data: {error}"))?;
+        .map_err(|error| format!("Could not write data: {error}"))?;
     file.persist(path)
-        .map_err(|error| format!("Could not replace academy data: {error}"))?;
+        .map_err(|error| format!("Could not replace data: {error}"))?;
     Ok(())
 }
 
