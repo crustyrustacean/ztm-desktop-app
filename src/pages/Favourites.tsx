@@ -1,6 +1,5 @@
 import CourseGrid from "@/components/CourseGrid";
 import { matchesFilter, type Course } from "@/lib/course";
-import "./Dashboard.css";
 
 type FavouritesProps = {
   filter: string;
@@ -23,8 +22,10 @@ function Favourites({
   );
 
   return (
-    <main className="dashboard">
-      <h1 id="favourites-heading">Favourites</h1>
+    <main className="p-6">
+      <h1 id="favourites-heading" className="text-[1.75rem] font-semibold">
+        Favourites
+      </h1>
       {favouriteCourses.length === 0 && (
         <p className="mt-4 text-muted-foreground">
           No favourites yet. Star a course on the Dashboard to add it here.
