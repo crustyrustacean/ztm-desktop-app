@@ -22,6 +22,8 @@ pub struct AppState {
     theme: Option<Theme>,
     /// Uuids of courses the user has starred.
     favourites: Vec<String>,
+    /// Name used to greet the user on the Dashboard.
+    name: Option<String>,
 }
 
 fn state_path(app: &tauri::AppHandle) -> Result<PathBuf, String> {
@@ -81,12 +83,13 @@ mod tests {
         let state = AppState {
             theme: Some(Theme::Dark),
             favourites: vec!["39fcbbb8".into()],
+            name: Some("Mark".into()),
         };
         write_state(&path, &state).unwrap();
         assert_eq!(read_state(&path), state);
         assert_eq!(
             serde_json::from_slice::<serde_json::Value>(&fs::read(&path).unwrap()).unwrap(),
-            serde_json::json!({ "theme": "dark", "favourites": ["39fcbbb8"] })
+            serde_json::json!({ "theme": "dark", "favourites": ["39fcbbb8"], "name": "Mark" })
         );
     }
 

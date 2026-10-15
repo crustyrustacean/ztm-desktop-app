@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import CourseGrid from "@/components/CourseGrid";
 import type { SyncError } from "@/hooks/use-courses";
@@ -14,7 +15,15 @@ function errorMessage(error: SyncError, hasCourses: boolean) {
     : "Could not load courses. Check your internet connection and try again.";
 }
 
+function greeting(date: Date) {
+  const hour = date.getHours();
+  if (hour < 12) return "Good Morning";
+  if (hour < 18) return "Good Afternoon";
+  return "Good Evening";
+}
+
 type DashboardProps = {
+  name: string;
   filter: string;
   courses: Course[];
   syncing: boolean;
@@ -25,6 +34,7 @@ type DashboardProps = {
 };
 
 function Dashboard({
+  name,
   filter,
   courses,
   syncing,
@@ -36,9 +46,22 @@ function Dashboard({
   const visibleCourses = courses.filter((course) =>
     matchesFilter(course, filter),
   );
+  const trimmedName = name.trim();
+
+  // The Dashboard stays mounted while hidden, so refresh the greeting as the day moves on.
+  const [now, setNow] = useState(() => new Date());
+  useEffect(() => {
+    const timer = setInterval(() => setNow(new Date()), 60_000);
+    return () => clearInterval(timer);
+  }, []);
 
   return (
     <main className="dashboard">
+      {trimmedName && (
+        <p className="dashboard-greeting">
+          {greeting(now)}, {trimmedName}
+        </p>
+      )}
       <h1>Dashboard</h1>
       <h2 id="courses-heading">Courses</h2>
       {syncing && (

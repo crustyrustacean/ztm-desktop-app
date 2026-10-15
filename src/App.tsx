@@ -14,6 +14,7 @@ import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { useCourses } from "@/hooks/use-courses";
 import { useFavourites } from "@/hooks/use-favourites";
+import { useUserName } from "@/hooks/use-user-name";
 import type { View } from "@/lib/view";
 
 function App() {
@@ -21,6 +22,7 @@ function App() {
   const [view, setView] = useState<View>("dashboard");
   const { courses, syncing, error, retry } = useCourses();
   const { favourites, toggleFavourite } = useFavourites();
+  const { name, setName } = useUserName();
 
   return (
     <TooltipProvider>
@@ -46,6 +48,7 @@ function App() {
           </header>
           <div id="dashboard" hidden={view !== "dashboard"}>
             <Dashboard
+              name={name}
               filter={query}
               courses={courses}
               syncing={syncing}
@@ -67,7 +70,7 @@ function App() {
             <WebView active={view === "web-view"} />
           </div>
           <div id="options" hidden={view !== "options"}>
-            <Options />
+            <Options name={name} onNameChange={setName} />
           </div>
         </div>
       </SidebarProvider>
