@@ -6,6 +6,7 @@ export type AppState = {
   theme?: Theme | null;
   favourites?: string[];
   name?: string | null;
+  academyMember?: boolean | null;
 };
 
 export async function loadState(): Promise<AppState> {
