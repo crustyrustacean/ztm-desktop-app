@@ -12,6 +12,7 @@ import {
 import { WebView } from "@/components/web-view";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { useAcademyMember } from "@/hooks/use-academy-member";
 import { useCourses } from "@/hooks/use-courses";
 import { useFavourites } from "@/hooks/use-favourites";
 import { useUserName } from "@/hooks/use-user-name";
@@ -23,6 +24,7 @@ function App() {
   const { courses, syncing, error, retry } = useCourses();
   const { favourites, toggleFavourite } = useFavourites();
   const { name, setName } = useUserName();
+  const { academyMember, setAcademyMember } = useAcademyMember();
 
   return (
     <TooltipProvider>
@@ -49,6 +51,7 @@ function App() {
           <div id="dashboard" hidden={view !== "dashboard"}>
             <Dashboard
               name={name}
+              academyMember={academyMember}
               filter={query}
               courses={courses}
               syncing={syncing}
@@ -70,7 +73,12 @@ function App() {
             <WebView active={view === "web-view"} />
           </div>
           <div id="options" hidden={view !== "options"}>
-            <Options name={name} onNameChange={setName} />
+            <Options
+              name={name}
+              onNameChange={setName}
+              academyMember={academyMember}
+              onAcademyMemberChange={setAcademyMember}
+            />
           </div>
         </div>
       </SidebarProvider>

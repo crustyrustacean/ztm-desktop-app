@@ -12,9 +12,16 @@ import { applyTheme, saveTheme, type Theme } from "@/lib/theme";
 type OptionsProps = {
   name: string;
   onNameChange: (name: string) => void;
+  academyMember: boolean;
+  onAcademyMemberChange: (academyMember: boolean) => void;
 };
 
-export default function Options({ name, onNameChange }: OptionsProps) {
+export default function Options({
+  name,
+  onNameChange,
+  academyMember,
+  onAcademyMemberChange,
+}: OptionsProps) {
   const [theme, setTheme] = useState<Theme>(() =>
     document.documentElement.classList.contains("dark") ? "dark" : "light",
   );
@@ -42,6 +49,19 @@ export default function Options({ name, onNameChange }: OptionsProps) {
           onChange={(event) => onNameChange(event.target.value)}
         />
         <FieldDescription>Used to greet you on the Dashboard.</FieldDescription>
+      </Field>
+      <Field orientation="horizontal">
+        <FieldContent>
+          <FieldLabel htmlFor="academy-member">Academy member</FieldLabel>
+          <FieldDescription>
+            Whether you have a Zero To Mastery Academy membership.
+          </FieldDescription>
+        </FieldContent>
+        <Switch
+          id="academy-member"
+          checked={academyMember}
+          onCheckedChange={onAcademyMemberChange}
+        />
       </Field>
       <Field orientation="horizontal">
         <FieldContent>

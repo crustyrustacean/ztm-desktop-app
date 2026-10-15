@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import CourseGrid from "@/components/CourseGrid";
 import type { SyncError } from "@/hooks/use-courses";
@@ -24,6 +25,7 @@ function greeting(date: Date) {
 
 type DashboardProps = {
   name: string;
+  academyMember: boolean;
   filter: string;
   courses: Course[];
   syncing: boolean;
@@ -35,6 +37,7 @@ type DashboardProps = {
 
 function Dashboard({
   name,
+  academyMember,
   filter,
   courses,
   syncing,
@@ -57,11 +60,16 @@ function Dashboard({
 
   return (
     <main className="dashboard">
-      {trimmedName && (
-        <p className="dashboard-greeting">
-          {greeting(now)}, {trimmedName}
-        </p>
-      )}
+      <div className="mb-2 flex items-center gap-4">
+        {trimmedName && (
+          <p className="min-w-0 text-[2.5rem] leading-[1.2] font-bold [overflow-wrap:anywhere]">
+            {greeting(now)}, {trimmedName}
+          </p>
+        )}
+        <Badge variant={academyMember ? "default" : "outline"}>
+          {academyMember ? "Academy" : "Public"}
+        </Badge>
+      </div>
       <h1>Dashboard</h1>
       <h2 id="courses-heading">Courses</h2>
       {syncing && (

@@ -17,13 +17,15 @@ pub enum Theme {
 
 /// User choices persisted across launches. Unset fields fall back to defaults in the UI.
 #[derive(Debug, Default, PartialEq, Serialize, Deserialize)]
-#[serde(default)]
+#[serde(default, rename_all = "camelCase")]
 pub struct AppState {
     theme: Option<Theme>,
     /// Uuids of courses the user has starred.
     favourites: Vec<String>,
     /// Name used to greet the user on the Dashboard.
     name: Option<String>,
+    /// Whether the user has a ZTM Academy membership. Unset means a member.
+    academy_member: Option<bool>,
 }
 
 fn state_path(app: &tauri::AppHandle) -> Result<PathBuf, String> {
@@ -84,12 +86,13 @@ mod tests {
             theme: Some(Theme::Dark),
             favourites: vec!["39fcbbb8".into()],
             name: Some("Mark".into()),
+            academy_member: Some(false),
         };
         write_state(&path, &state).unwrap();
         assert_eq!(read_state(&path), state);
         assert_eq!(
             serde_json::from_slice::<serde_json::Value>(&fs::read(&path).unwrap()).unwrap(),
-            serde_json::json!({ "theme": "dark", "favourites": ["39fcbbb8"], "name": "Mark" })
+            serde_json::json!({ "theme": "dark", "favourites": ["39fcbbb8"], "name": "Mark", "academyMember": false })
         );
     }
 
