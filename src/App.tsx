@@ -31,10 +31,10 @@ function App() {
       <SidebarProvider>
         <AppSidebar view={view} onViewChange={setView} />
         <div className="min-w-0 flex-1">
-          <header className="flex h-12 items-center border-b px-4">
+          <header className="flex h-14 items-center border-b px-4">
             <SidebarTrigger />
             {(view === "dashboard" || view === "favourites") && (
-              <InputGroup className="ml-2">
+              <InputGroup className="ml-2 h-10">
                 <InputGroupInput
                   type="search"
                   aria-label="Filter courses"
