@@ -5,6 +5,7 @@ import type { Theme } from "@/lib/theme";
 export type AppState = {
   theme?: Theme | null;
   favourites?: string[];
+  name?: string | null;
 };
 
 export async function loadState(): Promise<AppState> {
