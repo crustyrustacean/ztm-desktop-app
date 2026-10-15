@@ -66,7 +66,7 @@ function Dashboard({
             {greeting(now)}, {trimmedName}
           </p>
         )}
-        <Badge variant={academyMember ? "default" : "outline"}>
+        <Badge variant={academyMember ? "default" : "secondary"}>
           {academyMember ? "Academy" : "Public"}
         </Badge>
       </div>
