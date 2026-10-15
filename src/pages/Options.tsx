@@ -45,6 +45,7 @@ export default function Options({
           value={name}
           maxLength={50}
           autoComplete="off"
+          spellCheck={false}
           placeholder="Your name"
           onChange={(event) => onNameChange(event.target.value)}
         />
