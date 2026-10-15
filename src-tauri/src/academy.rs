@@ -19,9 +19,11 @@ const WEEK_SECS: u64 = 7 * 24 * 60 * 60;
 const FIRST_MONDAY_SYNC_SECS: u64 = (4 * 24 + 7) * 60 * 60;
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct Course {
     uuid: String,
     name: String,
+    image_url: Option<String>,
 }
 
 fn parse_courses(bytes: &[u8]) -> Result<Vec<Course>, String> {
@@ -38,6 +40,7 @@ fn parse_courses(bytes: &[u8]) -> Result<Vec<Course>, String> {
     let uuid_column = column("uuid").ok_or("Academy CSV must have a uuid column.")?;
     let course_column =
         column("course_name").ok_or("Academy CSV must have a course_name column.")?;
+    let image_column = column("image_url");
 
     let mut courses = Vec::new();
     for record in reader.records() {
@@ -50,9 +53,16 @@ fn parse_courses(bytes: &[u8]) -> Result<Vec<Course>, String> {
         if name.is_empty() {
             return Err("Academy CSV contains an empty course name.".into());
         }
+        // Images are optional; anything other than an https URL is treated as missing.
+        let image_url = image_column
+            .and_then(|column| record.get(column))
+            .map(str::trim)
+            .filter(|url| url.starts_with("https://"))
+            .map(str::to_owned);
         courses.push(Course {
             uuid: uuid.to_owned(),
             name: name.to_owned(),
+            image_url,
         });
     }
 
@@ -267,6 +277,7 @@ mod tests {
             .map(|(uuid, name)| Course {
                 uuid: (*uuid).into(),
                 name: (*name).into(),
+                image_url: None,
             })
             .collect()
     }
@@ -313,6 +324,20 @@ mod tests {
         assert_eq!(
             parse_courses(bytes).unwrap(),
             courses(&[("a1", "Rust"), ("b2", "Python")])
+        );
+    }
+
+    #[test]
+    fn parses_optional_https_image_urls() {
+        let bytes = b"uuid,course_name,image_url\na1,Rust, https://example.com/rust.png \nb2,Python,\nc3,Go,http://example.com/go.png\nd4,C\n";
+        let images: Vec<_> = parse_courses(bytes)
+            .unwrap()
+            .into_iter()
+            .map(|course| course.image_url)
+            .collect();
+        assert_eq!(
+            images,
+            [Some("https://example.com/rust.png".into()), None, None, None]
         );
     }
 
