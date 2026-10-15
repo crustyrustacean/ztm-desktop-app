@@ -4,7 +4,6 @@ import { Button } from "@/components/ui/button";
 import CourseGrid from "@/components/CourseGrid";
 import type { SyncError } from "@/hooks/use-courses";
 import { matchesFilter, type Course } from "@/lib/course";
-import "./Dashboard.css";
 
 // Chosen at render time so the message matches whether a list is actually shown.
 function errorMessage(error: SyncError, hasCourses: boolean) {
@@ -59,7 +58,7 @@ function Dashboard({
   }, []);
 
   return (
-    <main className="dashboard">
+    <main className="p-6">
       <div className="mb-2 flex items-center gap-4">
         {trimmedName && (
           <p className="min-w-0 text-[2.5rem] leading-[1.2] font-bold [overflow-wrap:anywhere]">
@@ -70,18 +69,22 @@ function Dashboard({
           {academyMember ? "Academy" : "Public"}
         </Badge>
       </div>
-      <h1>Dashboard</h1>
-      <h2 id="courses-heading">Courses</h2>
+      <h1 className="text-[1.75rem] font-semibold">Dashboard</h1>
+      <h2 id="courses-heading" className="mt-4 text-[1.25rem] font-semibold">
+        Courses
+      </h2>
       {syncing && (
-        <p role="status">
+        <p role="status" className="mt-4">
           {courses.length
             ? "Checking for course updates..."
             : "Loading courses..."}
         </p>
       )}
       {error && (
-        <div role="alert">
-          <p>{errorMessage(error, courses.length > 0)}</p>
+        <div role="alert" className="mt-4 flex flex-col items-start gap-2">
+          <p className="text-destructive [overflow-wrap:anywhere]">
+            {errorMessage(error, courses.length > 0)}
+          </p>
           {error === "sync-failed" && !syncing && (
             <Button variant="outline" size="sm" onClick={onRetry}>
               Retry
