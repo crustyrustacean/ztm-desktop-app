@@ -34,7 +34,7 @@ function App() {
           <header className="flex h-12 items-center border-b px-4">
             <SidebarTrigger />
             {(view === "dashboard" || view === "favourites") && (
-              <InputGroup className="ml-2 max-w-sm">
+              <InputGroup className="ml-2">
                 <InputGroupInput
                   type="search"
                   aria-label="Filter courses"
