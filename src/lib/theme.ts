@@ -20,11 +20,11 @@ export async function loadTheme(): Promise<Theme> {
   }
 }
 
-export async function applyTheme(theme: Theme) {
+export async function applyTheme(theme: Theme, resetWebView = false) {
   document.documentElement.classList.toggle("dark", theme === "dark");
   document.documentElement.style.colorScheme = theme;
   if (isTauri()) {
-    await invoke("set_web_view_theme", { theme }).catch((error) =>
+    await invoke("set_web_view_theme", { theme, reset: resetWebView }).catch((error) =>
       console.error("Could not apply theme to Academy views", error),
     );
   }

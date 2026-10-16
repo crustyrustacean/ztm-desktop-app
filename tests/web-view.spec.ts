@@ -64,7 +64,35 @@ test("the resolved system theme is synchronized to native Academy views", async 
           .at(-1),
       ),
     )
-    .toMatchObject({ command: "set_web_view_theme", args: { theme: "dark" } });
+    .toMatchObject({
+      command: "set_web_view_theme",
+      args: { theme: "dark", reset: false },
+    });
+});
+
+test("changing theme in Options requests an Academy webview reset", async ({
+  page,
+}) => {
+  await page.emulateMedia({ colorScheme: "light" });
+  await page.reload();
+  await page.getByRole("button", { name: "Options" }).click();
+  await page.getByRole("switch", { name: "Dark mode" }).click();
+
+  await expect(page.locator("html")).toHaveClass(/dark/);
+  await expect
+    .poll(() =>
+      page.evaluate(() =>
+        (
+          globalThis as typeof globalThis & { __TAURI_CALLS__: InvokeCall[] }
+        ).__TAURI_CALLS__
+          .filter((call) => call.command === "set_web_view_theme")
+          .at(-1),
+      ),
+    )
+    .toMatchObject({
+      command: "set_web_view_theme",
+      args: { theme: "dark", reset: true },
+    });
 });
 
 test("embedded webview bounds stay below the header and beside the sidebar", async ({

@@ -479,6 +479,7 @@ pub fn web_view_fullscreen<R: Runtime>(
 pub fn set_web_view_theme<R: Runtime>(
     app: tauri::AppHandle<R>,
     theme: WebTheme,
+    reset: bool,
     current: State<'_, WebViewTheme>,
 ) -> Result<(), String> {
     *current.0.lock().map_err(|e| e.to_string())? = theme;
@@ -499,6 +500,9 @@ pub fn set_web_view_theme<R: Runtime>(
                         theme.script()
                     ))
                     .map_err(|e| e.to_string())?;
+                if reset {
+                    window.reload().map_err(|e| e.to_string())?;
+                }
             }
         }
     }
@@ -510,6 +514,9 @@ pub fn set_web_view_theme<R: Runtime>(
                 theme.script()
             ))
             .map_err(|e| e.to_string())?;
+        if reset {
+            webview.reload().map_err(|e| e.to_string())?;
+        }
     }
     Ok(())
 }
