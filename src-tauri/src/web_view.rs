@@ -6,7 +6,7 @@ use std::{
 use serde::{Deserialize, Serialize};
 use tauri::{
     Emitter, Manager, Runtime, State, Url, Webview, WebviewUrl, WebviewWindowBuilder, Window,
-    WindowEvent,
+    WindowEvent, webview::PageLoadEvent,
 };
 #[cfg(not(target_os = "linux"))]
 use tauri::{LogicalPosition, LogicalSize, WebviewBuilder};
@@ -23,6 +23,8 @@ const ACADEMY_DATA_DIR: &str = "academy-webview";
 const PROMOTED_EVENT: &str = "web-view-promoted";
 /// Returns the standalone page's current session to the embedded view.
 const DEMOTED_EVENT: &str = "web-view-demoted";
+/// Unlocks the local shell after the Academy finishes an authenticated page load.
+const AUTHENTICATED_EVENT: &str = "academy-authenticated";
 const MAIN_WINDOW_LABEL: &str = "main";
 const HOME_URL: &str = "https://academy.zerotomastery.io/";
 // The Academy root redirects signed-out users to ZTM's public marketing site,
@@ -219,6 +221,22 @@ fn is_academy_exit_navigation(url: &Url) -> bool {
         || (segments.len() == 2 && segments[0] == "courses" && !segments[1].is_empty())
 }
 
+fn is_authenticated_academy_url(url: &Url) -> bool {
+    if url.scheme() != "https" || url.host_str() != Some("academy.zerotomastery.io") {
+        return false;
+    }
+    !matches!(
+        url.path_segments().and_then(|mut segments| segments.next()),
+        Some("sign_in" | "login" | "identity")
+    )
+}
+
+fn report_authentication<R: Runtime>(app: &tauri::AppHandle<R>, event: PageLoadEvent, url: &Url) {
+    if event == PageLoadEvent::Finished && is_authenticated_academy_url(url) {
+        let _ = app.emit_to(MAIN_WINDOW_LABEL, AUTHENTICATED_EVENT, ());
+    }
+}
+
 /// Creates the academy web view on first use, then places and shows it. When `url` is
 /// given the web view loads it, otherwise it keeps its current page (or the home page).
 #[cfg(not(target_os = "linux"))]
@@ -228,6 +246,7 @@ pub async fn show_web_view<R: Runtime>(
     bounds: Bounds,
     url: Option<String>,
     session: Option<PageSession>,
+    auth_check: bool,
     theme: State<'_, WebViewTheme>,
 ) -> Result<(), String> {
     destroy_fullscreen(window.app_handle())?;
@@ -245,12 +264,18 @@ pub async fn show_web_view<R: Runtime>(
                 None => HOME_URL.parse().map_err(|e| format!("{e}"))?,
             };
             let theme = *theme.0.lock().map_err(|e| e.to_string())?;
+            let authentication_app = window.app_handle().clone();
             let builder = WebviewBuilder::new(LABEL, WebviewUrl::External(url))
                 .initialization_script_for_all_frames(init_script(
                     "embedded",
                     session.as_ref(),
                     theme,
-                ));
+                ))
+                .on_page_load(move |_webview, payload| {
+                    if auth_check {
+                        report_authentication(&authentication_app, payload.event(), payload.url());
+                    }
+                });
             window
                 .add_child(
                     builder,
@@ -278,13 +303,13 @@ pub async fn show_web_view<R: Runtime>(
     bounds: Bounds,
     url: Option<String>,
     session: Option<PageSession>,
+    auth_check: bool,
     theme: State<'_, WebViewTheme>,
 ) -> Result<(), String> {
     let _ = (bounds, session);
     let url = course_url(url.as_deref().unwrap_or(LOGIN_URL))?;
     let theme = *theme.0.lock().map_err(|e| e.to_string())?;
-    show_course_window(window.app_handle(), url, theme)?;
-    window.emit(PROMOTED_EVENT, ()).map_err(|e| e.to_string())
+    show_course_window(window.app_handle(), url, theme, auth_check)
 }
 
 #[tauri::command]
@@ -316,13 +341,14 @@ pub async fn open_course_window<R: Runtime>(
     destroy_fullscreen(&app)?;
     let url = course_url(&url)?;
     let theme = *theme.0.lock().map_err(|e| e.to_string())?;
-    show_course_window(&app, url, theme)
+    show_course_window(&app, url, theme, false)
 }
 
 fn show_course_window<R: Runtime>(
     app: &tauri::AppHandle<R>,
     url: Url,
     theme: WebTheme,
+    close_on_authentication: bool,
 ) -> Result<(), String> {
     if let Some(window) = app.get_webview_window(COURSE_WINDOW_LABEL) {
         window.navigate(url).map_err(|e| e.to_string())?;
@@ -332,11 +358,22 @@ fn show_course_window<R: Runtime>(
         let _ = window.set_focus();
         return Ok(());
     }
+    let authentication_app = app.clone();
     let builder = WebviewWindowBuilder::new(app, COURSE_WINDOW_LABEL, WebviewUrl::External(url))
         .title("ZTM Academy")
         .inner_size(1280.0, 800.0)
         .min_inner_size(480.0, 360.0)
-        .theme(Some(theme.tauri()));
+        .theme(Some(theme.tauri()))
+        .on_page_load(move |window, payload| {
+            let authenticated = payload.event() == PageLoadEvent::Finished
+                && is_authenticated_academy_url(payload.url());
+            if close_on_authentication {
+                report_authentication(&authentication_app, payload.event(), payload.url());
+                if authenticated {
+                    let _ = window.destroy();
+                }
+            }
+        });
     // Wry's default Linux WebContext has no persistent cookie storage. Give the
     // Academy view an app-owned data directory so a Teachable login survives
     // closing the login window and opening an enrolled course from the dashboard.
@@ -601,7 +638,7 @@ fn place<R: Runtime>(_webview: &Webview<R>, _bounds: Bounds) -> Result<(), Strin
 mod tests {
     use super::{
         FullscreenWindowLifecycle, WebTheme, course_url, is_academy_exit_navigation,
-        theme_update_script,
+        is_authenticated_academy_url, theme_update_script,
     };
 
     #[test]
@@ -649,6 +686,28 @@ mod tests {
             "https://example.com/",
         ] {
             assert!(!is_academy_exit_navigation(&url.parse().unwrap()), "{url}");
+        }
+    }
+
+    #[test]
+    fn recognizes_only_completed_academy_destinations_as_authenticated() {
+        for url in [
+            "https://academy.zerotomastery.io/",
+            "https://academy.zerotomastery.io/courses/enrolled/697434",
+        ] {
+            assert!(is_authenticated_academy_url(&url.parse().unwrap()), "{url}");
+        }
+        for url in [
+            "https://zerotomastery.io/academy/",
+            "https://academy.zerotomastery.io/sign_in",
+            "https://sso.teachable.com/secure/441520/identity/login/otp",
+            "http://academy.zerotomastery.io/",
+            "https://example.com/",
+        ] {
+            assert!(
+                !is_authenticated_academy_url(&url.parse().unwrap()),
+                "{url}"
+            );
         }
     }
 

@@ -27,8 +27,13 @@ import { courseUrl, type Course } from "@/lib/course";
 import type { View } from "@/lib/view";
 
 function App() {
+  const desktop = isTauri();
   const [query, setQuery] = useState("");
-  const [view, setView] = useState<View>("dashboard");
+  const [academyAuthenticated, setAcademyAuthenticated] = useState(!desktop);
+  const [authenticationReady, setAuthenticationReady] = useState(!desktop);
+  const [view, setView] = useState<View>(
+    desktop ? "web-view" : "dashboard",
+  );
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const { courses, syncing, error, retry } = useCourses();
   const { favourites, toggleFavourite } = useFavourites();
@@ -56,7 +61,8 @@ function App() {
   }, []);
 
   useEffect(() => {
-    if (!isTauri()) return;
+    if (!desktop) return;
+    let cancelled = false;
     const promoted = listen("web-view-promoted", () => selectView("dashboard"));
     const demoted = listen<WebViewSession>("web-view-demoted", (event) => {
       setWebViewRequest((previous) => ({
@@ -66,11 +72,21 @@ function App() {
       }));
       selectView("web-view");
     });
+    const authenticated = listen("academy-authenticated", () => {
+      setAcademyAuthenticated(true);
+      setSidebarOpen(true);
+      setView("dashboard");
+    });
+    Promise.all([promoted, demoted, authenticated]).then(() => {
+      if (!cancelled) setAuthenticationReady(true);
+    });
     return () => {
+      cancelled = true;
       promoted.then((stop) => stop());
       demoted.then((stop) => stop());
+      authenticated.then((stop) => stop());
     };
-  }, [selectView]);
+  }, [desktop, selectView]);
 
   const canOpenCourse = useCallback(
     (course: Course) => courseUrl(course, academyMember) !== null,
@@ -97,6 +113,23 @@ function App() {
     },
     [academyMember, courseOpenMode, selectView],
   );
+
+  if (!academyAuthenticated) {
+    return (
+      <main className="min-h-svh bg-background text-foreground">
+        <header className="flex h-14 items-center border-b px-4">
+          <h1 className="text-sm font-medium">Sign in to ZTM Academy</h1>
+        </header>
+        {authenticationReady ? (
+          <WebView active request={null} authCheck />
+        ) : (
+          <p className="p-4 text-sm text-muted-foreground">
+            Checking your Academy session…
+          </p>
+        )}
+      </main>
+    );
+  }
 
   return (
     <TooltipProvider>

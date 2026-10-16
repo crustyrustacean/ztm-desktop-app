@@ -1,6 +1,30 @@
 import { expect, test } from "@playwright/test";
+import type { Page } from "@playwright/test";
 
 type InvokeCall = { command: string; args: Record<string, unknown> };
+
+async function authenticateAcademy(page: Page) {
+  await expect
+    .poll(() =>
+      page.evaluate(() =>
+        (
+          globalThis as typeof globalThis & { __TAURI_CALLS__: InvokeCall[] }
+        ).__TAURI_CALLS__.some(
+          (call) =>
+            call.command === "plugin:event|listen" &&
+            call.args.event === "academy-authenticated",
+        ),
+      ),
+    )
+    .toBe(true);
+  await page.evaluate(() =>
+    (
+      globalThis as typeof globalThis & {
+        __emitTauriEvent: (event: string) => void;
+      }
+    ).__emitTauriEvent("academy-authenticated"),
+  );
+}
 
 test.beforeEach(async ({ page }) => {
   await page.addInitScript(() => {
@@ -57,6 +81,40 @@ test.beforeEach(async ({ page }) => {
   });
 
   await page.goto("/");
+  await authenticateAcademy(page);
+});
+
+test("the dashboard stays hidden until Academy authentication succeeds", async ({
+  page,
+}) => {
+  await page.reload();
+
+  await expect(
+    page.getByRole("heading", { name: "Sign in to ZTM Academy" }),
+  ).toBeVisible();
+  await expect(page.getByRole("button", { name: "Dashboard" })).toHaveCount(0);
+  await expect
+    .poll(() =>
+      page.evaluate(() =>
+        (
+          globalThis as typeof globalThis & { __TAURI_CALLS__: InvokeCall[] }
+        ).__TAURI_CALLS__.find(
+          (call) =>
+            call.command === "show_web_view" && call.args.authCheck === true,
+        ),
+      ),
+    )
+    .toBeTruthy();
+
+  await page.evaluate(() =>
+    (
+      globalThis as typeof globalThis & {
+        __emitTauriEvent: (event: string) => void;
+      }
+    ).__emitTauriEvent("academy-authenticated"),
+  );
+
+  await expect(page.getByRole("button", { name: "Dashboard" })).toBeVisible();
 });
 
 test("the resolved system theme is synchronized to native Academy views", async ({
@@ -87,6 +145,7 @@ test("changing theme in Options requests an Academy webview reset", async ({
 }) => {
   await page.emulateMedia({ colorScheme: "light" });
   await page.reload();
+  await authenticateAcademy(page);
   await page.getByRole("button", { name: "Options" }).click();
   await page.getByRole("switch", { name: "Dark mode" }).click();
 
@@ -111,6 +170,24 @@ test("embedded webview bounds stay below the header and beside the sidebar", asy
   page,
 }) => {
   await page.getByRole("button", { name: "Web View" }).click();
+  await page
+    .locator('[data-slot="sidebar-container"]')
+    .evaluate(
+      (element) =>
+        new Promise<void>((resolve) => {
+          const duration = Number.parseFloat(
+            getComputedStyle(element).transitionDuration,
+          );
+          if (!duration) {
+            resolve();
+            return;
+          }
+          element.addEventListener("transitionend", () => resolve(), {
+            once: true,
+          });
+          setTimeout(resolve, duration * 1_000 + 100);
+        }),
+    );
   const slot = page.getByTestId("web-view-slot");
   await expect(slot).toBeVisible();
 

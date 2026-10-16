@@ -41,7 +41,12 @@ function boundsOf(element: HTMLElement, sidebarTooltipOpen = false): Bounds {
 let pending: Promise<unknown> = Promise.resolve();
 function enqueue(
   command: string,
-  args?: { bounds: Bounds; url?: string; session?: WebViewSession },
+  args?: {
+    bounds: Bounds;
+    url?: string;
+    session?: WebViewSession;
+    authCheck?: boolean;
+  },
 ) {
   pending = pending
     .then(() => invoke(command, args))
@@ -53,6 +58,7 @@ type WebViewProps = {
   /** The latest page asked for, e.g. a course opened from the Dashboard. */
   request: WebViewRequest | null;
   sidebarTooltipOpen?: boolean;
+  authCheck?: boolean;
 };
 
 // The site sends X-Frame-Options: DENY, so an iframe stays blank. Rust lays a
@@ -61,6 +67,7 @@ export function WebView({
   active,
   request,
   sidebarTooltipOpen = false,
+  authCheck = false,
 }: WebViewProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   // Read when the web view is shown so opening a course doesn't create it twice.
@@ -86,6 +93,7 @@ export function WebView({
       bounds: boundsOf(container, sidebarTooltipOpenRef.current),
       url,
       session: initial?.session,
+      authCheck,
     });
 
     // Covers sidebar collapse as well as window resizes.
@@ -119,6 +127,7 @@ export function WebView({
       bounds: boundsOf(container, sidebarTooltipOpenRef.current),
       url: request.url,
       session: request.session,
+      authCheck,
     });
   }, [active, request]);
 
