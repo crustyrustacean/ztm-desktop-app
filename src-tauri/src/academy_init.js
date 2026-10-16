@@ -6,6 +6,15 @@
   const MEDIA_RESTORE_MESSAGE = "ztm-desktop-media-restore";
   const MEDIA_CAPTURE_MESSAGE = "ztm-desktop-media-capture";
 
+  // Authentication is owned by Teachable and is sensitive to DOM, class, and
+  // style changes made before its own scripts initialize. Leave those documents
+  // completely untouched; the app customizations only apply after sign-in.
+  const isAuthenticationDocument =
+    location.hostname === "sso.teachable.com" ||
+    (/^academy\.zerotomastery\.io$/.test(location.hostname) &&
+      /(^|\/)(?:sign_in|login|identity)(?:\/|$)/.test(location.pathname));
+  if (isAuthenticationDocument) return;
+
   // The all-frame initialization script lets cross-origin player frames report
   // native <video>/<audio> progress without granting them access to Tauri IPC.
   if (window.top !== window) {
@@ -85,8 +94,7 @@
     return;
   }
   const isAcademyHost = /(^|\.)zerotomastery\.io$/.test(location.hostname);
-  const isTeachableAuthHost = location.hostname === "sso.teachable.com";
-  if (!isAcademyHost && !isTeachableAuthHost) return;
+  if (!isAcademyHost) return;
 
   const SITE_NAVIGATION = ".ztm-sidebar, .ztm-sidebar-links";
   const LESSON_NAV = 'div.nav:has(a[href="/"] img[alt="school logo"])';
@@ -124,15 +132,8 @@
     );
   }
 
-  function isAuthenticationPage() {
-    return (
-      isTeachableAuthHost ||
-      /(^|\/)(?:sign_in|login|identity)(?:\/|$)/.test(location.pathname)
-    );
-  }
-
   function shouldNormalizePalette() {
-    return isAcademyCatalog() || isCourseOverview() || isAuthenticationPage();
+    return isAcademyCatalog() || isCourseOverview();
   }
 
   function rgbChannels(value) {

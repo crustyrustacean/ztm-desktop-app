@@ -17,12 +17,20 @@ const LABEL: &str = "academy";
 const COURSE_WINDOW_LABEL: &str = "course";
 /// A disposable copy of the embedded page used for fullscreen.
 const FULLSCREEN_WINDOW_LABEL: &str = "academy-fullscreen";
+#[cfg(target_os = "linux")]
+const ACADEMY_DATA_DIR: &str = "academy-webview";
 /// Tells the shell to return to its dashboard after the embedded view is promoted.
 const PROMOTED_EVENT: &str = "web-view-promoted";
 /// Returns the standalone page's current session to the embedded view.
 const DEMOTED_EVENT: &str = "web-view-demoted";
 const MAIN_WINDOW_LABEL: &str = "main";
 const HOME_URL: &str = "https://academy.zerotomastery.io/";
+// The Academy root redirects signed-out users to ZTM's public marketing site,
+// whose sign-in launcher is not a dependable WebKitGTK entry point. The explicit
+// sign-in route redirects through Teachable SSO and returns authenticated users
+// to the Academy.
+#[cfg(target_os = "linux")]
+const LOGIN_URL: &str = "https://academy.zerotomastery.io/sign_in";
 /// Removes the site's navigation and handles fullscreen changes (see academy_init.js).
 const INIT_SCRIPT: &str = include_str!("academy_init.js");
 const THEME_STORAGE_KEY: &str = "ztm-desktop-app-theme";
@@ -273,7 +281,7 @@ pub async fn show_web_view<R: Runtime>(
     theme: State<'_, WebViewTheme>,
 ) -> Result<(), String> {
     let _ = (bounds, session);
-    let url = course_url(url.as_deref().unwrap_or(HOME_URL))?;
+    let url = course_url(url.as_deref().unwrap_or(LOGIN_URL))?;
     let theme = *theme.0.lock().map_err(|e| e.to_string())?;
     show_course_window(window.app_handle(), url, theme)?;
     window.emit(PROMOTED_EVENT, ()).map_err(|e| e.to_string())
@@ -324,15 +332,28 @@ fn show_course_window<R: Runtime>(
         let _ = window.set_focus();
         return Ok(());
     }
-    WebviewWindowBuilder::new(app, COURSE_WINDOW_LABEL, WebviewUrl::External(url))
+    let builder = WebviewWindowBuilder::new(app, COURSE_WINDOW_LABEL, WebviewUrl::External(url))
         .title("ZTM Academy")
         .inner_size(1280.0, 800.0)
         .min_inner_size(480.0, 360.0)
-        .theme(Some(theme.tauri()))
-        .initialization_script_for_all_frames(init_script("window", None, theme))
-        .build()
-        .map(|_| ())
-        .map_err(|e| e.to_string())
+        .theme(Some(theme.tauri()));
+    // Wry's default Linux WebContext has no persistent cookie storage. Give the
+    // Academy view an app-owned data directory so a Teachable login survives
+    // closing the login window and opening an enrolled course from the dashboard.
+    #[cfg(target_os = "linux")]
+    let builder = builder.data_directory(
+        app.path()
+            .app_data_dir()
+            .map_err(|error| error.to_string())?
+            .join(ACADEMY_DATA_DIR),
+    );
+    // Authentication providers can reject or malfunction in a Linux embedded
+    // browser when any document-start script is present. The Linux compatibility
+    // window must remain a plain WebKitGTK view; native Academy enhancements stay
+    // enabled for the supported Windows/macOS window path.
+    #[cfg(not(target_os = "linux"))]
+    let builder = builder.initialization_script_for_all_frames(init_script("window", None, theme));
+    builder.build().map(|_| ()).map_err(|e| e.to_string())
 }
 
 /// Called by academy_init.js when a page enters or leaves fullscreen. Embedded pages

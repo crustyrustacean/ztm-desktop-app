@@ -435,7 +435,7 @@ test("the Academy dashboard follows the app light palette", async ({ page }) => 
   );
 });
 
-test("logged-out Academy and Teachable SSO pages stay in the app dark theme", async ({
+test("logged-out Academy and Teachable SSO pages are not modified", async ({
   page,
 }) => {
   for (const url of [
@@ -454,17 +454,18 @@ test("logged-out Academy and Teachable SSO pages stay in the app dark theme", as
         </main>`;
     });
 
+    await expect(page.locator("html")).not.toHaveAttribute("data-theme");
     await expect(page.locator("body")).toHaveCSS(
       "background-color",
-      "rgb(24, 24, 24)",
+      "rgba(0, 0, 0, 0)",
     );
     await expect(page.locator("form")).toHaveCSS(
       "background-color",
-      "rgb(24, 24, 24)",
+      "rgb(241, 243, 245)",
     );
     await expect(page.locator("input")).toHaveCSS(
       "background-color",
-      "rgb(24, 24, 24)",
+      "rgb(255, 255, 255)",
     );
     await expect(page.getByRole("button", { name: "Log in" })).toHaveCSS(
       "background-color",
