@@ -2,7 +2,9 @@
 // own scripts, so it must not assume that <head> or <body> exist yet.
 (() => {
   if (window.top !== window) return;
-  if (!/(^|\.)zerotomastery\.io$/.test(location.hostname)) return;
+  const isAcademyHost = /(^|\.)zerotomastery\.io$/.test(location.hostname);
+  const isTeachableAuthHost = location.hostname === "sso.teachable.com";
+  if (!isAcademyHost && !isTeachableAuthHost) return;
 
   // This is deliberately the only Academy style the desktop app injects.
   const SIDEBAR = ".ztm-sidebar";
@@ -12,12 +14,36 @@
   const COURSE_BACK =
     'a.nav-icon-back[aria-label="Back to course curriculum"]';
   const STYLE_ID = "ztm-desktop-app-style";
+  const THEME_KEY = "ztm-desktop-app-theme";
   const isFullscreenView = window.__ZTM_DESKTOP_VIEW__ === "fullscreen";
-  let appTheme = window.__ZTM_DESKTOP_THEME__ === "dark" ? "dark" : "light";
+  function initialAppTheme() {
+    try {
+      const saved = window.sessionStorage?.getItem(THEME_KEY);
+      if (saved === "dark" || saved === "light") return saved;
+    } catch {}
+    if (window.matchMedia) {
+      return window.matchMedia("(prefers-color-scheme: dark)").matches
+        ? "dark"
+        : "light";
+    }
+    return window.__ZTM_DESKTOP_THEME__ === "dark" ? "dark" : "light";
+  }
+  let appTheme = initialAppTheme();
   let paletteScheduled = false;
 
   function isCourseOverview() {
     return /^\/courses\/(?:enrolled\/)?[^/]+\/?$/.test(location.pathname);
+  }
+
+  function isAuthenticationPage() {
+    return (
+      isTeachableAuthHost ||
+      /(^|\/)(?:sign_in|login|identity)(?:\/|$)/.test(location.pathname)
+    );
+  }
+
+  function shouldNormalizePalette() {
+    return isCourseOverview() || isAuthenticationPage();
   }
 
   function rgbChannels(value) {
@@ -42,21 +68,23 @@
   function normalizeCourseOverview() {
     paletteScheduled = false;
     if (!document.body || typeof getComputedStyle !== "function") return;
-    const elements = document.body.querySelectorAll("*");
-    if (appTheme !== "dark" || !isCourseOverview()) {
+    const elements = [document.body, ...document.body.querySelectorAll("*")];
+    if (appTheme !== "dark" || !shouldNormalizePalette()) {
+      delete document.documentElement.dataset.ztmDarkPalette;
       for (const element of elements) {
         delete element.dataset.ztmDarkSurface;
         delete element.dataset.ztmDarkText;
       }
       return;
     }
+    document.documentElement.dataset.ztmDarkPalette = "true";
 
     for (const element of elements) {
       if (element.closest("svg, picture, video, canvas")) continue;
       const computed = getComputedStyle(element);
       if (
         element.dataset.ztmDarkSurface === "true" ||
-        neutralRgb(computed.backgroundColor, 235, 255)
+        neutralRgb(computed.backgroundColor, 215, 255)
       ) {
         element.dataset.ztmDarkSurface = "true";
       }
@@ -80,6 +108,11 @@
       ? `${SIDEBAR} { display: none !important; }`
       : `${SIDEBAR}, ${LESSON_NAV} { display: none !important; }`;
     return `:root { color-scheme: ${appTheme} !important; }
+      :root[data-ztm-dark-palette="true"],
+      :root[data-ztm-dark-palette="true"] body {
+        background-color: #181818 !important;
+        color: #f5f5f5 !important;
+      }
       :root[data-theme="dark"] [data-ztm-dark-surface="true"] {
         background-color: #181818 !important;
         border-color: #363636 !important;
@@ -93,6 +126,9 @@
   function applyAppTheme(theme) {
     appTheme = theme === "dark" ? "dark" : "light";
     window.__ZTM_DESKTOP_THEME__ = appTheme;
+    try {
+      window.sessionStorage?.setItem(THEME_KEY, appTheme);
+    } catch {}
     const root = document.documentElement;
     if (!root) return;
     if (root.classList.contains("dark") !== (appTheme === "dark")) {

@@ -32,6 +32,7 @@ function runAcademyScript(
   const styles = new Map();
   const invokes = [];
   const storage = new Map();
+  const sessionStorage = new Map();
   const scrollCalls = [];
   const document = {
     fullscreenElement: null,
@@ -63,6 +64,10 @@ function runAcademyScript(
         invokes.push({ command, args });
         return Promise.resolve();
       },
+    },
+    sessionStorage: {
+      getItem: (key) => sessionStorage.get(key) ?? null,
+      setItem: (key, value) => sessionStorage.set(key, value),
     },
     scrollX: 12,
     scrollY: 34,
@@ -98,6 +103,7 @@ function runAcademyScript(
     invokes,
     scrollCalls,
     styles,
+    window,
     windowListeners,
   };
 }
@@ -166,12 +172,28 @@ test("the Academy document uses the app-selected theme", () => {
   );
 });
 
+test("a live theme change is retained for the webview reset reload", () => {
+  const runtime = runAcademyScript("fullscreen", null, [], true, [], "dark");
+
+  runtime.window.__ZTM_DESKTOP_SET_THEME__("light");
+
+  assert.equal(
+    runtime.window.sessionStorage.getItem("ztm-desktop-app-theme"),
+    "light",
+  );
+});
+
 test("course overview detection supports every enrolled course identifier", () => {
   assert.match(
     initScript,
     /courses\\\/\(\?:enrolled\\\/\)\?\[\^\/\]\+/,
     "the dark overview palette must cover /courses/enrolled/{id}",
   );
+});
+
+test("theme initialization includes Teachable authentication pages", () => {
+  assert.match(initScript, /sso\.teachable\.com/);
+  assert.match(initScript, /sign_in\|login\|identity/);
 });
 
 test("the Academy lesson header cannot navigate home before it is hidden", () => {

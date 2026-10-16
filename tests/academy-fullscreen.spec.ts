@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Route } from "@playwright/test";
 import { readFileSync } from "node:fs";
 
 const academyInit = readFileSync("src-tauri/src/academy_init.js", "utf8");
@@ -11,12 +11,14 @@ const lessonHeader = `
   </div>`;
 
 test.beforeEach(async ({ context, page }) => {
-  await context.route("https://academy.zerotomastery.io/**", (route) =>
+  await page.emulateMedia({ colorScheme: "dark" });
+  const fulfillAcademy = (route: Route) =>
     route.fulfill({
       contentType: "text/html",
       body: `<!doctype html><html><head></head><body>${lessonHeader}</body></html>`,
-    }),
-  );
+    });
+  await context.route("https://academy.zerotomastery.io/**", fulfillAcademy);
+  await context.route("https://sso.teachable.com/**", fulfillAcademy);
   await context.addInitScript({
     content: `
       window.__ZTM_DESKTOP_VIEW__ = location.search.includes("embedded")
@@ -106,6 +108,24 @@ test("the Academy page follows the app theme and rejects site overrides", async 
   await expect(page.locator("html")).toHaveCSS("color-scheme", "light");
 });
 
+test("a theme reset reload cannot restore the webview creation-time theme", async ({
+  page,
+}) => {
+  await expect(page.locator("html")).toHaveClass(/dark/);
+  await page.evaluate(() => {
+    (
+      window as typeof window & {
+        __ZTM_DESKTOP_SET_THEME__: (theme: string) => void;
+      }
+    ).__ZTM_DESKTOP_SET_THEME__("light");
+  });
+  await page.reload();
+
+  await expect(page.locator("html")).toHaveClass(/light/);
+  await expect(page.locator("html")).not.toHaveClass(/dark/);
+  await expect(page.locator("html")).toHaveCSS("color-scheme", "light");
+});
+
 test("the embedded Academy page enforces the same app-selected theme", async ({
   page,
 }) => {
@@ -158,6 +178,44 @@ test("the embedded course overview normalizes only hard-coded neutral surfaces",
     "data-ztm-dark-surface",
     "true",
   );
+});
+
+test("logged-out Academy and Teachable SSO pages stay in the app dark theme", async ({
+  page,
+}) => {
+  for (const url of [
+    "https://academy.zerotomastery.io/sign_in",
+    "https://sso.teachable.com/secure/123/identity/login/password",
+  ]) {
+    await page.goto(url);
+    await page.evaluate(() => {
+      document.body.innerHTML = `
+        <main style="background: white; color: #172033">
+          <form style="background: #f1f3f5">
+            <label>Email</label>
+            <input style="background: white; color: #111827">
+            <button style="background: rgb(245, 0, 87); color: white">Log in</button>
+          </form>
+        </main>`;
+    });
+
+    await expect(page.locator("body")).toHaveCSS(
+      "background-color",
+      "rgb(24, 24, 24)",
+    );
+    await expect(page.locator("form")).toHaveCSS(
+      "background-color",
+      "rgb(24, 24, 24)",
+    );
+    await expect(page.locator("input")).toHaveCSS(
+      "background-color",
+      "rgb(24, 24, 24)",
+    );
+    await expect(page.getByRole("button", { name: "Log in" })).toHaveCSS(
+      "background-color",
+      "rgb(245, 0, 87)",
+    );
+  }
 });
 
 test("Academy cannot restore an active home link after its SPA rerenders", async ({
