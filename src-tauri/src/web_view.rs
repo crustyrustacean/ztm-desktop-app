@@ -5,9 +5,11 @@ use std::{
 
 use serde::{Deserialize, Serialize};
 use tauri::{
-    Emitter, LogicalPosition, LogicalSize, Manager, Runtime, State, Url, Webview, WebviewBuilder,
-    WebviewUrl, WebviewWindowBuilder, Window, WindowEvent,
+    Emitter, Manager, Runtime, State, Url, Webview, WebviewUrl, WebviewWindowBuilder, Window,
+    WindowEvent,
 };
+#[cfg(not(target_os = "linux"))]
+use tauri::{LogicalPosition, LogicalSize, WebviewBuilder};
 
 /// The child web view laid over the app's Web View slot.
 const LABEL: &str = "academy";
@@ -211,6 +213,7 @@ fn is_academy_exit_navigation(url: &Url) -> bool {
 
 /// Creates the academy web view on first use, then places and shows it. When `url` is
 /// given the web view loads it, otherwise it keeps its current page (or the home page).
+#[cfg(not(target_os = "linux"))]
 #[tauri::command]
 pub async fn show_web_view<R: Runtime>(
     window: Window<R>,
@@ -255,6 +258,27 @@ pub async fn show_web_view<R: Runtime>(
     webview.show().map_err(|e| e.to_string())
 }
 
+/// Tauri's child-webview implementation is not usable on Linux: GTK packs child
+/// webviews into the window's layout container and ignores their requested bounds.
+/// Reparenting the WebKit widgets fixes the bounds but violates Wry's widget-tree
+/// assumptions and can abort the process on pointer input. Use the supported
+/// top-level webview window there instead.
+#[cfg(target_os = "linux")]
+#[tauri::command]
+pub async fn show_web_view<R: Runtime>(
+    window: Window<R>,
+    bounds: Bounds,
+    url: Option<String>,
+    session: Option<PageSession>,
+    theme: State<'_, WebViewTheme>,
+) -> Result<(), String> {
+    let _ = (bounds, session);
+    let url = course_url(url.as_deref().unwrap_or(HOME_URL))?;
+    let theme = *theme.0.lock().map_err(|e| e.to_string())?;
+    show_course_window(window.app_handle(), url, theme)?;
+    window.emit(PROMOTED_EVENT, ()).map_err(|e| e.to_string())
+}
+
 #[tauri::command]
 pub async fn set_web_view_bounds<R: Runtime>(
     window: Window<R>,
@@ -283,6 +307,15 @@ pub async fn open_course_window<R: Runtime>(
 ) -> Result<(), String> {
     destroy_fullscreen(&app)?;
     let url = course_url(&url)?;
+    let theme = *theme.0.lock().map_err(|e| e.to_string())?;
+    show_course_window(&app, url, theme)
+}
+
+fn show_course_window<R: Runtime>(
+    app: &tauri::AppHandle<R>,
+    url: Url,
+    theme: WebTheme,
+) -> Result<(), String> {
     if let Some(window) = app.get_webview_window(COURSE_WINDOW_LABEL) {
         window.navigate(url).map_err(|e| e.to_string())?;
         // Best effort: bringing the window forward should not fail the navigation.
@@ -291,8 +324,7 @@ pub async fn open_course_window<R: Runtime>(
         let _ = window.set_focus();
         return Ok(());
     }
-    let theme = *theme.0.lock().map_err(|e| e.to_string())?;
-    WebviewWindowBuilder::new(&app, COURSE_WINDOW_LABEL, WebviewUrl::External(url))
+    WebviewWindowBuilder::new(app, COURSE_WINDOW_LABEL, WebviewUrl::External(url))
         .title("ZTM Academy")
         .inner_size(1280.0, 800.0)
         .min_inner_size(480.0, 360.0)
@@ -539,54 +571,8 @@ fn place<R: Runtime>(webview: &Webview<R>, bounds: Bounds) -> Result<(), String>
         .map_err(|e| e.to_string())
 }
 
-// On Linux Tauri packs child webviews into the window's GtkBox, so the box splits the
-// window between them and ignores position/size. Move the child into a GtkOverlay on
-// top of the main webview and position it with margins instead.
 #[cfg(target_os = "linux")]
-fn place<R: Runtime>(webview: &Webview<R>, bounds: Bounds) -> Result<(), String> {
-    use gtk::prelude::*;
-
-    webview
-        .with_webview(move |platform| {
-            let child: gtk::Widget = platform.inner().upcast();
-            if let Err(error) = attach_overlay(&child) {
-                eprintln!("web view: {error}");
-                return;
-            }
-            child.set_halign(gtk::Align::Start);
-            child.set_valign(gtk::Align::Start);
-            child.set_margin_start(bounds.x.round() as i32);
-            child.set_margin_top(bounds.y.round() as i32);
-            child.set_size_request(bounds.width.round() as i32, bounds.height.round() as i32);
-        })
-        .map_err(|e| e.to_string())
-}
-
-#[cfg(target_os = "linux")]
-fn attach_overlay(child: &gtk::Widget) -> Result<(), &'static str> {
-    use gtk::prelude::*;
-
-    let parent = child.parent().ok_or("web view has no parent")?;
-    if parent.is::<gtk::Overlay>() {
-        return Ok(());
-    }
-    let vbox = parent
-        .downcast::<gtk::Box>()
-        .map_err(|_| "web view parent is not a GtkBox")?;
-    let main = vbox
-        .children()
-        .into_iter()
-        .find(|widget| widget != child && widget.is::<webkit2gtk::WebView>())
-        .ok_or("main webview not found")?;
-
-    // The local handles keep both webviews alive while they are out of a container.
-    let overlay = gtk::Overlay::new();
-    vbox.remove(child);
-    vbox.remove(&main);
-    overlay.add(&main);
-    overlay.add_overlay(child);
-    vbox.pack_start(&overlay, true, true, 0);
-    overlay.show();
+fn place<R: Runtime>(_webview: &Webview<R>, _bounds: Bounds) -> Result<(), String> {
     Ok(())
 }
 
