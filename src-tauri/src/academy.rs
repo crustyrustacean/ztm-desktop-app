@@ -24,6 +24,10 @@ pub struct Course {
     uuid: String,
     name: String,
     image_url: Option<String>,
+    /// Course page for enrolled Academy members.
+    enrolled_url: Option<String>,
+    /// Public course page for people without a membership.
+    public_url: Option<String>,
 }
 
 fn parse_courses(bytes: &[u8]) -> Result<Vec<Course>, String> {
@@ -41,6 +45,16 @@ fn parse_courses(bytes: &[u8]) -> Result<Vec<Course>, String> {
     let course_column =
         column("course_name").ok_or("Academy CSV must have a course_name column.")?;
     let image_column = column("image_url");
+    let enrolled_column = column("enrolled_url");
+    let public_column = column("public_url");
+    // Optional columns; anything other than an https URL is treated as missing.
+    let https_url = |record: &csv::StringRecord, column: Option<usize>| {
+        column
+            .and_then(|column| record.get(column))
+            .map(str::trim)
+            .filter(|url| url.starts_with("https://"))
+            .map(str::to_owned)
+    };
 
     let mut courses = Vec::new();
     for record in reader.records() {
@@ -53,16 +67,12 @@ fn parse_courses(bytes: &[u8]) -> Result<Vec<Course>, String> {
         if name.is_empty() {
             return Err("Academy CSV contains an empty course name.".into());
         }
-        // Images are optional; anything other than an https URL is treated as missing.
-        let image_url = image_column
-            .and_then(|column| record.get(column))
-            .map(str::trim)
-            .filter(|url| url.starts_with("https://"))
-            .map(str::to_owned);
         courses.push(Course {
             uuid: uuid.to_owned(),
             name: name.to_owned(),
-            image_url,
+            image_url: https_url(&record, image_column),
+            enrolled_url: https_url(&record, enrolled_column),
+            public_url: https_url(&record, public_column),
         });
     }
 
@@ -278,6 +288,8 @@ mod tests {
                 uuid: (*uuid).into(),
                 name: (*name).into(),
                 image_url: None,
+                enrolled_url: None,
+                public_url: None,
             })
             .collect()
     }
@@ -337,7 +349,33 @@ mod tests {
             .collect();
         assert_eq!(
             images,
-            [Some("https://example.com/rust.png".into()), None, None, None]
+            [
+                Some("https://example.com/rust.png".into()),
+                None,
+                None,
+                None
+            ]
+        );
+    }
+
+    #[test]
+    fn parses_optional_https_course_urls() {
+        let bytes = b"uuid,course_name,enrolled_url,public_url\na1,Rust,https://academy.zerotomastery.io/courses/enrolled/1,\nb2,Go, ,https://zerotomastery.io/courses/go/\nc3,C,http://example.com,javascript:alert(1)\n";
+        let urls: Vec<_> = parse_courses(bytes)
+            .unwrap()
+            .into_iter()
+            .map(|course| (course.enrolled_url, course.public_url))
+            .collect();
+        assert_eq!(
+            urls,
+            [
+                (
+                    Some("https://academy.zerotomastery.io/courses/enrolled/1".into()),
+                    None
+                ),
+                (None, Some("https://zerotomastery.io/courses/go/".into())),
+                (None, None),
+            ]
         );
     }
 

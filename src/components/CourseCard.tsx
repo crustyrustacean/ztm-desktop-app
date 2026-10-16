@@ -9,21 +9,30 @@ type CourseCardProps = {
   imageUrl: string | null;
   favourite: boolean;
   onToggleFavourite: () => void;
+  /** Opens the course; omitted when the course has no page to open. */
+  onOpen?: () => void;
 };
 
-/** Card for a single course. Only the favourite star is interactive until courses can be opened. */
+/** Card for a single course. The whole card opens the course; the star toggles a favourite. */
 function CourseCard({
   name,
   imageUrl,
   favourite,
   onToggleFavourite,
+  onOpen,
 }: CourseCardProps) {
   // Remember which URL failed so a later URL change gets a fresh attempt.
   const [failedUrl, setFailedUrl] = useState<string | null>(null);
   const showImage = imageUrl !== null && imageUrl !== failedUrl;
 
   return (
-    <Card className="relative h-full pt-0">
+    <Card
+      className={cn(
+        "relative h-full pt-0",
+        onOpen &&
+          "transition-shadow has-[[data-open-course]:focus-visible]:ring-3 has-[[data-open-course]:focus-visible]:ring-ring/50 has-[[data-open-course]:hover]:shadow-md",
+      )}
+    >
       {showImage ? (
         <img
           src={imageUrl}
@@ -44,7 +53,7 @@ function CourseCard({
       <Button
         variant="ghost"
         size="icon"
-        className="absolute top-2 right-2 bg-background/80 hover:bg-background"
+        className="absolute top-2 right-2 z-10 bg-background/80 hover:bg-background"
         aria-pressed={favourite}
         aria-label={
           favourite
@@ -57,7 +66,22 @@ function CourseCard({
       </Button>
       <CardHeader>
         <CardTitle className="break-words [overflow-wrap:anywhere]">
-          <h3>{name}</h3>
+          <h3>
+            {onOpen ? (
+              // The stretched ::after makes the whole card clickable while keeping
+              // one accessible control named after the course.
+              <button
+                type="button"
+                data-open-course
+                className="cursor-pointer text-left outline-none after:absolute after:inset-0 after:content-['']"
+                onClick={onOpen}
+              >
+                {name}
+              </button>
+            ) : (
+              name
+            )}
+          </h3>
         </CardTitle>
       </CardHeader>
     </Card>

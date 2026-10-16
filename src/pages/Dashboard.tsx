@@ -32,6 +32,8 @@ type DashboardProps = {
   onRetry: () => void;
   favourites: ReadonlySet<string>;
   onToggleFavourite: (uuid: string) => void;
+  onOpenCourse: (course: Course) => void;
+  canOpenCourse: (course: Course) => boolean;
 };
 
 function Dashboard({
@@ -44,6 +46,8 @@ function Dashboard({
   onRetry,
   favourites,
   onToggleFavourite,
+  onOpenCourse,
+  canOpenCourse,
 }: DashboardProps) {
   const visibleCourses = courses.filter((course) =>
     matchesFilter(course, filter),
@@ -102,6 +106,8 @@ function Dashboard({
           courses={visibleCourses}
           favourites={favourites}
           onToggleFavourite={onToggleFavourite}
+          onOpenCourse={onOpenCourse}
+          canOpenCourse={canOpenCourse}
           labelledBy="courses-heading"
         />
       )}

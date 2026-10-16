@@ -5,6 +5,14 @@
   "windows": ["main"],
   "permissions": [
     "core:default",
+    "allow-load-courses",
+    "allow-sync-courses",
+    "allow-load-state",
+    "allow-save-state",
+    "allow-show-web-view",
+    "allow-set-web-view-bounds",
+    "allow-hide-web-view",
+    "allow-open-course-window",
     "opener:default",
     {
       "identifier": "opener:allow-open-url",

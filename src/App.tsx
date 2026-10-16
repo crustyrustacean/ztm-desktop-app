@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useCallback, useState } from "react";
+import { invoke, isTauri } from "@tauri-apps/api/core";
 import { SearchIcon } from "lucide-react";
 import Dashboard from "./pages/Dashboard";
 import Favourites from "./pages/Favourites";
@@ -9,13 +10,15 @@ import {
   InputGroupAddon,
   InputGroupInput,
 } from "@/components/ui/input-group";
-import { WebView } from "@/components/web-view";
+import { WebView, type WebViewRequest } from "@/components/web-view";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { useAcademyMember } from "@/hooks/use-academy-member";
+import { useCourseOpenMode } from "@/hooks/use-course-open-mode";
 import { useCourses } from "@/hooks/use-courses";
 import { useFavourites } from "@/hooks/use-favourites";
 import { useUserName } from "@/hooks/use-user-name";
+import { courseUrl, type Course } from "@/lib/course";
 import type { View } from "@/lib/view";
 
 function App() {
@@ -25,6 +28,36 @@ function App() {
   const { favourites, toggleFavourite } = useFavourites();
   const { name, setName } = useUserName();
   const { academyMember, setAcademyMember } = useAcademyMember();
+  const { courseOpenMode, setCourseOpenMode } = useCourseOpenMode();
+  const [webViewRequest, setWebViewRequest] = useState<WebViewRequest | null>(
+    null,
+  );
+
+  const canOpenCourse = useCallback(
+    (course: Course) => courseUrl(course, academyMember) !== null,
+    [academyMember],
+  );
+
+  const openCourse = useCallback(
+    (course: Course) => {
+      const url = courseUrl(course, academyMember);
+      if (!url) return;
+      const openEmbedded = () => {
+        setWebViewRequest((previous) => ({ url, id: (previous?.id ?? 0) + 1 }));
+        setView("web-view");
+      };
+      if (courseOpenMode === "window" && isTauri()) {
+        // If the window can't open, show the course in the app rather than nowhere.
+        invoke("open_course_window", { url }).catch((error) => {
+          console.error("Could not open course window", error);
+          openEmbedded();
+        });
+        return;
+      }
+      openEmbedded();
+    },
+    [academyMember, courseOpenMode],
+  );
 
   return (
     <TooltipProvider>
@@ -59,6 +92,8 @@ function App() {
               onRetry={retry}
               favourites={favourites}
               onToggleFavourite={toggleFavourite}
+              onOpenCourse={openCourse}
+              canOpenCourse={canOpenCourse}
             />
           </div>
           <div id="favourites" hidden={view !== "favourites"}>
@@ -67,10 +102,12 @@ function App() {
               courses={courses}
               favourites={favourites}
               onToggleFavourite={toggleFavourite}
+              onOpenCourse={openCourse}
+              canOpenCourse={canOpenCourse}
             />
           </div>
           <div id="web-view" hidden={view !== "web-view"}>
-            <WebView active={view === "web-view"} />
+            <WebView active={view === "web-view"} request={webViewRequest} />
           </div>
           <div id="options" hidden={view !== "options"}>
             <Options
@@ -78,6 +115,8 @@ function App() {
               onNameChange={setName}
               academyMember={academyMember}
               onAcademyMemberChange={setAcademyMember}
+              courseOpenMode={courseOpenMode}
+              onCourseOpenModeChange={setCourseOpenMode}
             />
           </div>
         </div>
