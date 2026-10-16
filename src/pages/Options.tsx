@@ -6,7 +6,15 @@ import {
   FieldLabel,
 } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import {
+  NativeSelect,
+  NativeSelectOption,
+} from "@/components/ui/native-select";
 import { Switch } from "@/components/ui/switch";
+import {
+  SHORTCUT_MODIFIER_LABELS,
+  type ShortcutModifier,
+} from "@/lib/shortcuts";
 import { applyTheme, saveTheme, type Theme } from "@/lib/theme";
 
 type OptionsProps = {
@@ -14,6 +22,8 @@ type OptionsProps = {
   onNameChange: (name: string) => void;
   academyMember: boolean;
   onAcademyMemberChange: (academyMember: boolean) => void;
+  shortcutModifier: ShortcutModifier;
+  onShortcutModifierChange: (shortcutModifier: ShortcutModifier) => void;
 };
 
 export default function Options({
@@ -21,6 +31,8 @@ export default function Options({
   onNameChange,
   academyMember,
   onAcademyMemberChange,
+  shortcutModifier,
+  onShortcutModifierChange,
 }: OptionsProps) {
   const [theme, setTheme] = useState<Theme>(() =>
     document.documentElement.classList.contains("dark") ? "dark" : "light",
@@ -76,6 +88,28 @@ export default function Options({
           checked={theme === "dark"}
           onCheckedChange={handleThemeChange}
         />
+      </Field>
+      <Field orientation="horizontal">
+        <FieldContent>
+          <FieldLabel htmlFor="shortcut-modifier">Shortcut key</FieldLabel>
+          <FieldDescription>
+            Hold to show shortcuts, then press 1–5 to jump to a menu item or S
+            to filter courses.
+          </FieldDescription>
+        </FieldContent>
+        <NativeSelect
+          id="shortcut-modifier"
+          value={shortcutModifier}
+          onChange={(event) =>
+            onShortcutModifierChange(event.target.value as ShortcutModifier)
+          }
+        >
+          {Object.entries(SHORTCUT_MODIFIER_LABELS).map(([value, label]) => (
+            <NativeSelectOption key={value} value={value}>
+              {label}
+            </NativeSelectOption>
+          ))}
+        </NativeSelect>
       </Field>
     </section>
   );

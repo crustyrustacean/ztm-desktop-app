@@ -1,4 +1,5 @@
 import { invoke, isTauri } from "@tauri-apps/api/core";
+import type { ShortcutModifier } from "@/lib/shortcuts";
 import type { Theme } from "@/lib/theme";
 
 /** Mirrors `AppState` in src-tauri/src/app_state.rs. */
@@ -7,6 +8,7 @@ export type AppState = {
   favourites?: string[];
   name?: string | null;
   academyMember?: boolean | null;
+  shortcutModifier?: ShortcutModifier | null;
 };
 
 export async function loadState(): Promise<AppState> {

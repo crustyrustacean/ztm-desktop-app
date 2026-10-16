@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { SearchIcon } from "lucide-react";
 import Dashboard from "./pages/Dashboard";
 import Favourites from "./pages/Favourites";
@@ -10,12 +10,16 @@ import {
   InputGroupInput,
 } from "@/components/ui/input-group";
 import { WebView } from "@/components/web-view";
+import { Kbd } from "@/components/ui/kbd";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { useAcademyMember } from "@/hooks/use-academy-member";
 import { useCourses } from "@/hooks/use-courses";
 import { useFavourites } from "@/hooks/use-favourites";
+import { useShortcutModifier } from "@/hooks/use-shortcut-modifier";
+import { useShortcuts } from "@/hooks/use-shortcuts";
 import { useUserName } from "@/hooks/use-user-name";
+import { openDiscord } from "@/lib/discord";
 import type { View } from "@/lib/view";
 
 function App() {
@@ -25,17 +29,36 @@ function App() {
   const { favourites, toggleFavourite } = useFavourites();
   const { name, setName } = useUserName();
   const { academyMember, setAcademyMember } = useAcademyMember();
+  const { shortcutModifier, setShortcutModifier } = useShortcutModifier();
+  const filterRef = useRef<HTMLInputElement>(null);
+  const hasFilter = view === "dashboard" || view === "favourites";
+
+  function focusFilter() {
+    if (!hasFilter) setView("dashboard");
+    // The filter only mounts once the view has a filter, so wait for that render.
+    requestAnimationFrame(() => filterRef.current?.focus());
+  }
+
+  const showHints = useShortcuts(shortcutModifier, {
+    Digit1: () => setView("dashboard"),
+    Digit2: () => setView("favourites"),
+    Digit3: () => setView("web-view"),
+    Digit4: () => setView("options"),
+    Digit5: openDiscord,
+    KeyS: focusFilter,
+  });
 
   return (
     <TooltipProvider>
       <SidebarProvider>
-        <AppSidebar view={view} onViewChange={setView} />
+        <AppSidebar view={view} onViewChange={setView} showHints={showHints} />
         <div className="min-w-0 flex-1">
           <header className="flex h-14 items-center border-b px-4">
             <SidebarTrigger />
-            {(view === "dashboard" || view === "favourites") && (
+            {hasFilter && (
               <InputGroup className="ml-2 h-10">
                 <InputGroupInput
+                  ref={filterRef}
                   type="search"
                   aria-label="Filter courses"
                   placeholder="Filter courses..."
@@ -45,6 +68,11 @@ function App() {
                 <InputGroupAddon>
                   <SearchIcon />
                 </InputGroupAddon>
+                {showHints && (
+                  <InputGroupAddon align="inline-end">
+                    <Kbd className="border bg-background text-foreground">S</Kbd>
+                  </InputGroupAddon>
+                )}
               </InputGroup>
             )}
           </header>
@@ -78,6 +106,8 @@ function App() {
               onNameChange={setName}
               academyMember={academyMember}
               onAcademyMemberChange={setAcademyMember}
+              shortcutModifier={shortcutModifier}
+              onShortcutModifierChange={setShortcutModifier}
             />
           </div>
         </div>
