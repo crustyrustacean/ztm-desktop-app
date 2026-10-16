@@ -27,7 +27,19 @@ test.beforeEach(async ({ page }) => {
         async invoke(command: string, args: Record<string, unknown> = {}) {
           calls.push({ command, args });
           if (command === "load_state") return {};
-          if (command === "load_courses") return [];
+          if (command === "load_courses") {
+            return [
+              {
+                uuid: "test-course",
+                name: "Test Course",
+                imageUrl: null,
+                enrolledUrl:
+                  "https://academy.zerotomastery.io/courses/enrolled/test-course",
+                publicUrl:
+                  "https://academy.zerotomastery.io/p/test-course",
+              },
+            ];
+          }
           if (command === "sync_courses") return null;
           if (command === "plugin:event|listen") {
             const handler = callbacks.get(args.handler as number);
@@ -111,6 +123,32 @@ test("embedded webview bounds stay below the header and beside the sidebar", asy
     )
     .toBeTruthy();
 
+  await expect
+    .poll(() =>
+      page.evaluate(() => {
+        const slot = document
+          .querySelector('[data-testid="web-view-slot"]')!
+          .getBoundingClientRect();
+        const bounds = (
+          globalThis as typeof globalThis & { __TAURI_CALLS__: InvokeCall[] }
+        ).__TAURI_CALLS__.filter(
+          (call) =>
+            call.command === "show_web_view" ||
+            call.command === "set_web_view_bounds",
+        ).at(-1)?.args.bounds as
+          | { x: number; y: number; width: number; height: number }
+          | undefined;
+        return Boolean(
+          bounds &&
+            bounds.x === slot.left &&
+            bounds.y === slot.top &&
+            bounds.width === slot.width &&
+            bounds.height === slot.height,
+        );
+      }),
+    )
+    .toBe(true);
+
   const geometry = await page.evaluate(() => {
     const rect = (selector: string) => {
       const value = document.querySelector(selector)!.getBoundingClientRect();
@@ -126,9 +164,15 @@ test("embedded webview bounds stay below the header and beside the sidebar", asy
     const calls = (
       globalThis as typeof globalThis & { __TAURI_CALLS__: InvokeCall[] }
     ).__TAURI_CALLS__;
-    const shown = calls.find((call) => call.command === "show_web_view")!;
+    const positioned = calls
+      .filter(
+        (call) =>
+          call.command === "show_web_view" ||
+          call.command === "set_web_view_bounds",
+      )
+      .at(-1)!;
     return {
-      bounds: shown.args.bounds as ReturnType<typeof rect>,
+      bounds: positioned.args.bounds as ReturnType<typeof rect>,
       slot: rect('[data-testid="web-view-slot"]'),
       sidebar: rect('[data-slot="sidebar-container"]'),
       header: rect("header"),
@@ -148,11 +192,50 @@ test("embedded webview bounds stay below the header and beside the sidebar", asy
   expect(geometry.slot.bottom).toBeLessThanOrEqual(geometry.viewport.height);
 });
 
+test("entering Web View from the sidebar collapses the app sidebar", async ({
+  page,
+}) => {
+  const sidebar = page.locator('[data-slot="sidebar"][data-state]');
+  await expect(sidebar).toHaveAttribute("data-state", "expanded");
+
+  await page.getByRole("button", { name: "Web View" }).click();
+
+  await expect(sidebar).toHaveAttribute("data-state", "collapsed");
+  await expect(page.getByTestId("web-view-slot")).toBeVisible();
+});
+
+test("opening a course in Web View collapses the app sidebar", async ({
+  page,
+}) => {
+  const sidebar = page.locator('[data-slot="sidebar"][data-state]');
+  await expect(sidebar).toHaveAttribute("data-state", "expanded");
+
+  await page
+    .getByRole("button", { name: "Test Course", exact: true })
+    .click();
+
+  await expect(sidebar).toHaveAttribute("data-state", "collapsed");
+  await expect(page.getByTestId("web-view-slot")).toBeVisible();
+  await expect
+    .poll(() =>
+      page.evaluate(() =>
+        (
+          globalThis as typeof globalThis & { __TAURI_CALLS__: InvokeCall[] }
+        ).__TAURI_CALLS__.find(
+          (call) =>
+            call.command === "show_web_view" &&
+            call.args.url ===
+              "https://academy.zerotomastery.io/courses/enrolled/test-course",
+        ),
+      ),
+    )
+    .toBeTruthy();
+});
+
 test("collapsed sidebar tooltips temporarily clear the native webview", async ({
   page,
 }) => {
   await page.getByRole("button", { name: "Web View" }).click();
-  await page.getByRole("button", { name: "Toggle Sidebar" }).click();
 
   const slot = page.getByTestId("web-view-slot");
   const dashboard = page.getByRole("button", { name: "Dashboard" });

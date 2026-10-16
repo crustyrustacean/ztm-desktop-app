@@ -29,6 +29,7 @@ import type { View } from "@/lib/view";
 function App() {
   const [query, setQuery] = useState("");
   const [view, setView] = useState<View>("dashboard");
+  const [sidebarOpen, setSidebarOpen] = useState(true);
   const { courses, syncing, error, retry } = useCourses();
   const { favourites, toggleFavourite } = useFavourites();
   const { name, setName } = useUserName();
@@ -49,23 +50,27 @@ function App() {
     },
     [],
   );
+  const selectView = useCallback((nextView: View) => {
+    if (nextView === "web-view") setSidebarOpen(false);
+    setView(nextView);
+  }, []);
 
   useEffect(() => {
     if (!isTauri()) return;
-    const promoted = listen("web-view-promoted", () => setView("dashboard"));
+    const promoted = listen("web-view-promoted", () => selectView("dashboard"));
     const demoted = listen<WebViewSession>("web-view-demoted", (event) => {
       setWebViewRequest((previous) => ({
         url: event.payload.url,
         id: (previous?.id ?? 0) + 1,
         session: event.payload,
       }));
-      setView("web-view");
+      selectView("web-view");
     });
     return () => {
       promoted.then((stop) => stop());
       demoted.then((stop) => stop());
     };
-  }, []);
+  }, [selectView]);
 
   const canOpenCourse = useCallback(
     (course: Course) => courseUrl(course, academyMember) !== null,
@@ -78,7 +83,7 @@ function App() {
       if (!url) return;
       const openEmbedded = () => {
         setWebViewRequest((previous) => ({ url, id: (previous?.id ?? 0) + 1 }));
-        setView("web-view");
+        selectView("web-view");
       };
       if (courseOpenMode === "window" && isTauri()) {
         // If the window can't open, show the course in the app rather than nowhere.
@@ -90,15 +95,15 @@ function App() {
       }
       openEmbedded();
     },
-    [academyMember, courseOpenMode],
+    [academyMember, courseOpenMode, selectView],
   );
 
   return (
     <TooltipProvider>
-      <SidebarProvider>
+      <SidebarProvider open={sidebarOpen} onOpenChange={setSidebarOpen}>
         <AppSidebar
           view={view}
-          onViewChange={setView}
+          onViewChange={selectView}
           onTooltipOpenChange={handleSidebarTooltipOpenChange}
         />
         <div className="min-w-0 flex-1">
