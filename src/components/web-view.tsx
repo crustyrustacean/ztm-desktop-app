@@ -3,6 +3,10 @@ import { invoke, isTauri } from "@tauri-apps/api/core";
 
 type Bounds = { x: number; y: number; width: number; height: number };
 
+// Native child webviews always composite above the shell DOM. Leave a small
+// temporary gutter so collapsed-sidebar tooltips can be seen beside the rail.
+const SIDEBAR_TOOLTIP_GUTTER = 112;
+
 /** A page to load in the web view. `id` changes on every request, even for the same URL. */
 export type WebViewSession = {
   url: string;
@@ -19,9 +23,17 @@ export type WebViewRequest = {
   session?: WebViewSession;
 };
 
-function boundsOf(element: HTMLElement): Bounds {
+function boundsOf(element: HTMLElement, sidebarTooltipOpen = false): Bounds {
   const rect = element.getBoundingClientRect();
-  return { x: rect.left, y: rect.top, width: rect.width, height: rect.height };
+  const gutter = sidebarTooltipOpen
+    ? Math.min(SIDEBAR_TOOLTIP_GUTTER, rect.width)
+    : 0;
+  return {
+    x: rect.left + gutter,
+    y: rect.top,
+    width: rect.width - gutter,
+    height: rect.height,
+  };
 }
 
 // Rust runs commands concurrently, so chain them to keep show/hide in call order
@@ -40,28 +52,38 @@ type WebViewProps = {
   active: boolean;
   /** The latest page asked for, e.g. a course opened from the Dashboard. */
   request: WebViewRequest | null;
+  sidebarTooltipOpen?: boolean;
 };
 
 // The site sends X-Frame-Options: DENY, so an iframe stays blank. Rust lays a
 // native child webview over this placeholder div instead (see web_view.rs).
-export function WebView({ active, request }: WebViewProps) {
+export function WebView({
+  active,
+  request,
+  sidebarTooltipOpen = false,
+}: WebViewProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   // Read when the web view is shown so opening a course doesn't create it twice.
   const requestRef = useRef(request);
   requestRef.current = request;
+  const sidebarTooltipOpenRef = useRef(sidebarTooltipOpen);
+  sidebarTooltipOpenRef.current = sidebarTooltipOpen;
   const loadedRequestId = useRef<number | null>(null);
 
   useEffect(() => {
     const container = containerRef.current;
     if (!active || !container || !isTauri()) return;
 
-    const sync = () => enqueue("set_web_view_bounds", { bounds: boundsOf(container) });
+    const sync = () =>
+      enqueue("set_web_view_bounds", {
+        bounds: boundsOf(container, sidebarTooltipOpenRef.current),
+      });
 
     const initial = requestRef.current;
     const url = initial?.url;
     if (initial) loadedRequestId.current = initial.id;
     enqueue("show_web_view", {
-      bounds: boundsOf(container),
+      bounds: boundsOf(container, sidebarTooltipOpenRef.current),
       url,
       session: initial?.session,
     });
@@ -79,6 +101,14 @@ export function WebView({ active, request }: WebViewProps) {
     };
   }, [active]);
 
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!active || !container || !isTauri()) return;
+    enqueue("set_web_view_bounds", {
+      bounds: boundsOf(container, sidebarTooltipOpen),
+    });
+  }, [active, sidebarTooltipOpen]);
+
   // A page requested while the web view is already showing.
   useEffect(() => {
     const container = containerRef.current;
@@ -86,7 +116,7 @@ export function WebView({ active, request }: WebViewProps) {
     if (request.id === loadedRequestId.current) return;
     loadedRequestId.current = request.id;
     enqueue("show_web_view", {
-      bounds: boundsOf(container),
+      bounds: boundsOf(container, sidebarTooltipOpenRef.current),
       url: request.url,
       session: request.session,
     });

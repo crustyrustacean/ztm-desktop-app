@@ -148,6 +148,74 @@ test("embedded webview bounds stay below the header and beside the sidebar", asy
   expect(geometry.slot.bottom).toBeLessThanOrEqual(geometry.viewport.height);
 });
 
+test("collapsed sidebar tooltips temporarily clear the native webview", async ({
+  page,
+}) => {
+  await page.getByRole("button", { name: "Web View" }).click();
+  await page.getByRole("button", { name: "Toggle Sidebar" }).click();
+
+  const slot = page.getByTestId("web-view-slot");
+  const dashboard = page.getByRole("button", { name: "Dashboard" });
+  await expect(slot).toBeVisible();
+  await dashboard.hover();
+
+  const tooltip = page.locator('[data-slot="tooltip-content"]', {
+    hasText: "Dashboard",
+  });
+  await expect(tooltip).toBeVisible();
+
+  await expect
+    .poll(() =>
+      page.evaluate(() => {
+        const calls = (
+          globalThis as typeof globalThis & { __TAURI_CALLS__: InvokeCall[] }
+        ).__TAURI_CALLS__.filter(
+          (call) => call.command === "set_web_view_bounds",
+        );
+        const bounds = calls.at(-1)?.args.bounds as
+          | { x: number; width: number }
+          | undefined;
+        const slotRect = document
+          .querySelector('[data-testid="web-view-slot"]')!
+          .getBoundingClientRect();
+        const tooltipRect = document
+          .querySelector('[data-slot="tooltip-content"]')!
+          .getBoundingClientRect();
+        return {
+          clearsTooltip: Boolean(bounds && bounds.x >= tooltipRect.right),
+          shrinksFromLeft: Boolean(
+            bounds &&
+              bounds.x > slotRect.left &&
+              bounds.width < slotRect.width,
+          ),
+        };
+      }),
+    )
+    .toEqual({ clearsTooltip: true, shrinksFromLeft: true });
+
+  await page.locator("header").hover();
+  await expect(tooltip).toBeHidden();
+  await expect
+    .poll(() =>
+      page.evaluate(() => {
+        const bounds = (
+          globalThis as typeof globalThis & { __TAURI_CALLS__: InvokeCall[] }
+        ).__TAURI_CALLS__.filter(
+          (call) => call.command === "set_web_view_bounds",
+        ).at(-1)?.args.bounds as { x: number; width: number } | undefined;
+        const slotRect = document
+          .querySelector('[data-testid="web-view-slot"]')!
+          .getBoundingClientRect();
+        return Boolean(
+          bounds &&
+            bounds.x === slotRect.left &&
+            bounds.width === slotRect.width,
+        );
+      }),
+    )
+    .toBe(true);
+});
+
 test("switching from Web View to Dashboard disposes the native child", async ({
   page,
 }) => {

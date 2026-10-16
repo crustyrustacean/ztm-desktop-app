@@ -37,6 +37,18 @@ function App() {
   const [webViewRequest, setWebViewRequest] = useState<WebViewRequest | null>(
     null,
   );
+  const [activeSidebarTooltip, setActiveSidebarTooltip] = useState<
+    string | null
+  >(null);
+  const handleSidebarTooltipOpenChange = useCallback(
+    (tooltip: string, open: boolean) => {
+      setActiveSidebarTooltip((active) => {
+        if (open) return tooltip;
+        return active === tooltip ? null : active;
+      });
+    },
+    [],
+  );
 
   useEffect(() => {
     if (!isTauri()) return;
@@ -84,7 +96,11 @@ function App() {
   return (
     <TooltipProvider>
       <SidebarProvider>
-        <AppSidebar view={view} onViewChange={setView} />
+        <AppSidebar
+          view={view}
+          onViewChange={setView}
+          onTooltipOpenChange={handleSidebarTooltipOpenChange}
+        />
         <div className="min-w-0 flex-1">
           <header className="flex h-14 items-center border-b px-4">
             <SidebarTrigger />
@@ -129,7 +145,11 @@ function App() {
             />
           </div>
           <div id="web-view" hidden={view !== "web-view"}>
-            <WebView active={view === "web-view"} request={webViewRequest} />
+            <WebView
+              active={view === "web-view"}
+              request={webViewRequest}
+              sidebarTooltipOpen={activeSidebarTooltip !== null}
+            />
           </div>
           <div id="options" hidden={view !== "options"}>
             <Options
