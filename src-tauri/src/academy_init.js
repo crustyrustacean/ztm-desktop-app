@@ -1,7 +1,89 @@
 // Injected into every top-level ZTM page shown by the app. It runs before the page's
 // own scripts, so it must not assume that <head> or <body> exist yet.
 (() => {
-  if (window.top !== window) return;
+  const MEDIA_STATE_MESSAGE = "ztm-desktop-media-state";
+  const MEDIA_READY_MESSAGE = "ztm-desktop-media-ready";
+  const MEDIA_RESTORE_MESSAGE = "ztm-desktop-media-restore";
+  const MEDIA_CAPTURE_MESSAGE = "ztm-desktop-media-capture";
+
+  // The all-frame initialization script lets cross-origin player frames report
+  // native <video>/<audio> progress without granting them access to Tauri IPC.
+  if (window.top !== window) {
+    const wiredMedia = new WeakSet();
+    let pendingRestore = null;
+    let activeMedia = null;
+
+    function reportMedia(media) {
+      activeMedia = media;
+      window.top.postMessage(
+        {
+          type: MEDIA_STATE_MESSAGE,
+          mediaTime: Number.isFinite(media.currentTime)
+            ? media.currentTime
+            : null,
+          mediaPaused: media.paused,
+          playbackRate: Number.isFinite(media.playbackRate)
+            ? media.playbackRate
+            : null,
+        },
+        "*",
+      );
+    }
+
+    function restoreMedia(media) {
+      if (!pendingRestore || pendingRestore.mediaTime == null) return;
+      const apply = () => {
+        media.currentTime = pendingRestore.mediaTime;
+        if (pendingRestore.playbackRate != null) {
+          media.playbackRate = pendingRestore.playbackRate;
+        }
+        if (pendingRestore.mediaPaused === false) {
+          media.play().catch(() => {});
+        } else if (pendingRestore.mediaPaused === true) {
+          media.pause();
+        }
+      };
+      if (media.readyState >= 1) apply();
+      else media.addEventListener("loadedmetadata", apply, { once: true });
+    }
+
+    function wireMedia() {
+      for (const media of document.querySelectorAll("video, audio")) {
+        if (wiredMedia.has(media)) continue;
+        wiredMedia.add(media);
+        for (const event of [
+          "timeupdate",
+          "ratechange",
+          "play",
+          "pause",
+          "ended",
+        ]) {
+          media.addEventListener(event, () => reportMedia(media));
+        }
+        restoreMedia(media);
+      }
+    }
+
+    window.addEventListener("message", (event) => {
+      if (event.source !== window.top) return;
+      if (event.data?.type === MEDIA_CAPTURE_MESSAGE) {
+        wireMedia();
+        const media = activeMedia || document.querySelector("video, audio");
+        if (media) reportMedia(media);
+        return;
+      }
+      if (event.data?.type !== MEDIA_RESTORE_MESSAGE) return;
+      pendingRestore = event.data.session;
+      wireMedia();
+    });
+    document.addEventListener("DOMContentLoaded", wireMedia);
+    new MutationObserver(wireMedia).observe(document, {
+      childList: true,
+      subtree: true,
+    });
+    window.top.postMessage({ type: MEDIA_READY_MESSAGE }, "*");
+    return;
+  }
   const isAcademyHost = /(^|\.)zerotomastery\.io$/.test(location.hostname);
   const isTeachableAuthHost = location.hostname === "sso.teachable.com";
   if (!isAcademyHost && !isTeachableAuthHost) return;
@@ -262,25 +344,154 @@
     attributeFilter: ["class", "data-theme", "style"],
   });
 
-  const SESSION_KEY = "ztm-desktop-app-session";
+  const LEGACY_SESSION_KEY = "ztm-desktop-app-session";
+  const COURSE_PROGRESS_KEY = "ztm-desktop-course-progress-v2";
+  const ACTIVE_COURSE_KEY = "ztm-desktop-active-course";
+  const wiredMedia = new WeakSet();
+  let activeMedia = null;
+  let framedMedia = null;
+  let restore = null;
+  let redirectingToProgress = false;
+  let fullscreenExit = null;
+  let finishFullscreenExit = null;
+
+  function courseKey(url = location.href) {
+    try {
+      const path = new URL(url).pathname;
+      const course = path.match(/^\/courses\/(?:enrolled\/)?([^/]+)/);
+      if (course) return `course:${course[1]}`;
+      const product = path.match(/^\/p\/([^/]+)/);
+      return product ? `product:${product[1]}` : null;
+    } catch {
+      return null;
+    }
+  }
+
+  function isCourseEntryPage() {
+    return /^\/(?:courses\/(?:enrolled\/)?[^/]+|p\/[^/]+)\/?$/.test(
+      location.pathname,
+    );
+  }
+
+  function readCourseProgress() {
+    try {
+      return JSON.parse(localStorage.getItem(COURSE_PROGRESS_KEY)) || {};
+    } catch {
+      return {};
+    }
+  }
+
+  const locationCourseKey = courseKey();
+  let activeCourseKey = locationCourseKey;
+  try {
+    const rememberedCourse = sessionStorage.getItem(ACTIVE_COURSE_KEY);
+    const isLessonPage = /\/(?:lectures|lessons)\//.test(location.pathname);
+    if (isLessonPage && rememberedCourse) activeCourseKey = rememberedCourse;
+    if (activeCourseKey) {
+      sessionStorage.setItem(ACTIVE_COURSE_KEY, activeCourseKey);
+    }
+  } catch {}
+
+  function validSession(session) {
+    if (!session || typeof session.url !== "string") return false;
+    try {
+      const url = new URL(session.url);
+      return (
+        url.protocol === "https:" &&
+        /(^|\.)zerotomastery\.io$/.test(url.hostname)
+      );
+    } catch {
+      return false;
+    }
+  }
+
+  function durableSession() {
+    const progress = readCourseProgress();
+    const saved = activeCourseKey ? progress[activeCourseKey] : null;
+    if (validSession(saved)) return saved;
+    try {
+      const legacy = JSON.parse(localStorage.getItem(LEGACY_SESSION_KEY));
+      return validSession(legacy) ? legacy : null;
+    } catch {
+      return null;
+    }
+  }
+
+  const transferredRestore = window.__ZTM_DESKTOP_RESTORE__;
+  const savedProgress = durableSession();
+  if (
+    !transferredRestore &&
+    savedProgress &&
+    isCourseEntryPage() &&
+    savedProgress?.url !== location.href &&
+    courseKey(savedProgress?.url) === locationCourseKey
+  ) {
+    redirectingToProgress = true;
+    location.replace(savedProgress.url);
+  }
+
   function captureSession() {
-    const media = document.querySelector("video, audio");
+    const media =
+      activeMedia ||
+      (framedMedia ? null : document.querySelector("video, audio"));
+    const mediaState = media
+      ? {
+          mediaTime: Number.isFinite(media.currentTime)
+            ? media.currentTime
+            : null,
+          mediaPaused: media.paused,
+          playbackRate: Number.isFinite(media.playbackRate)
+            ? media.playbackRate
+            : null,
+        }
+      : framedMedia || {
+          mediaTime: null,
+          mediaPaused: null,
+          playbackRate: null,
+        };
     return {
       url: location.href,
       scrollX: window.scrollX,
       scrollY: window.scrollY,
-      mediaTime: media?.currentTime ?? null,
-      mediaPaused: media?.paused ?? null,
-      playbackRate: media?.playbackRate ?? null,
+      ...mediaState,
     };
   }
+  window.__ZTM_DESKTOP_CAPTURE_SESSION__ = captureSession;
 
   function exitFullscreen() {
-    return window.__TAURI_INTERNALS__?.invoke("web_view_fullscreen", {
-      fullscreen: false,
-      session: captureSession(),
+    if (fullscreenExit) return fullscreenExit;
+    const frames = [...document.querySelectorAll("iframe")];
+    const invokeExit = () =>
+      window.__TAURI_INTERNALS__?.invoke("web_view_fullscreen", {
+        fullscreen: false,
+        session: captureSession(),
+      });
+    if (frames.length === 0) return invokeExit();
+
+    // Ask the focused cross-origin player for a synchronous snapshot. Its
+    // ordinary timeupdate relay can be behind the actual playback position at
+    // the exact moment Escape leaves native fullscreen.
+    fullscreenExit = new Promise((resolve, reject) => {
+      let finished = false;
+      const finish = () => {
+        if (finished) return;
+        finished = true;
+        finishFullscreenExit = null;
+        Promise.resolve(invokeExit()).then(resolve, reject);
+      };
+      finishFullscreenExit = finish;
+      for (const frame of frames) {
+        frame.contentWindow?.postMessage({ type: MEDIA_CAPTURE_MESSAGE }, "*");
+      }
+      window.setTimeout(finish, 100);
     });
+    return fullscreenExit;
   }
+  // The native window can leave OS fullscreen before a focused cross-origin
+  // player delivers Escape to this document. Rust calls this hook while the
+  // webview is still alive so its current playback state is captured before
+  // the disposable fullscreen window is destroyed.
+  window.__ZTM_DESKTOP_EXIT_FULLSCREEN__ = exitFullscreen;
 
   // Capture before Academy's delegated click handler. In the promoted window,
   // the logo is an exit control; elsewhere this prevents a pre-removal click.
@@ -302,38 +513,131 @@
   );
 
   function saveSession() {
+    if (redirectingToProgress) return;
+    const session = captureSession();
     try {
-      localStorage.setItem(SESSION_KEY, JSON.stringify(captureSession()));
+      localStorage.setItem(LEGACY_SESSION_KEY, JSON.stringify(session));
+      const progress = readCourseProgress();
+      if (activeCourseKey) progress[activeCourseKey] = session;
+      if (locationCourseKey) progress[locationCourseKey] = session;
+      localStorage.setItem(COURSE_PROGRESS_KEY, JSON.stringify(progress));
     } catch {}
   }
+  window.__ZTM_DESKTOP_SAVE_SESSION__ = saveSession;
 
   function savedSession() {
-    try {
-      const saved = JSON.parse(localStorage.getItem(SESSION_KEY));
-      return saved?.url === location.href ? saved : null;
-    } catch {
-      return null;
+    return savedProgress?.url === location.href ? savedProgress : null;
+  }
+
+  function resolvedRestore() {
+    const saved = savedSession();
+    if (!transferredRestore) return saved;
+    if (!saved || saved.url !== transferredRestore.url) {
+      return transferredRestore;
+    }
+
+    // Escape can make the native fullscreen resize fallback arrive before the
+    // page's richer IPC payload. Keep its URL, but fill absent media state from
+    // the last durable checkpoint written by the fullscreen player frame.
+    return {
+      ...transferredRestore,
+      mediaTime: transferredRestore.mediaTime ?? saved.mediaTime,
+      mediaPaused: transferredRestore.mediaPaused ?? saved.mediaPaused,
+      playbackRate: transferredRestore.playbackRate ?? saved.playbackRate,
+    };
+  }
+
+  restore = resolvedRestore();
+
+  function applyMediaSession(media) {
+    if (!restore || restore.mediaTime == null) return;
+    const apply = () => {
+      media.currentTime = restore.mediaTime;
+      if (restore.playbackRate != null) media.playbackRate = restore.playbackRate;
+      if (restore.mediaPaused === false) media.play().catch(() => {});
+      else if (restore.mediaPaused === true) media.pause();
+    };
+    if (media.readyState >= 1) apply();
+    else media.addEventListener("loadedmetadata", apply, { once: true });
+  }
+
+  function wireMediaElements() {
+    for (const media of document.querySelectorAll("video, audio")) {
+      if (wiredMedia.has(media)) continue;
+      wiredMedia.add(media);
+      for (const event of [
+        "timeupdate",
+        "ratechange",
+        "play",
+        "pause",
+        "ended",
+      ]) {
+        media.addEventListener(event, () => {
+          activeMedia = media;
+          saveSession();
+        });
+      }
+      applyMediaSession(media);
     }
   }
 
-  const restore = window.__ZTM_DESKTOP_RESTORE__ || savedSession();
+  function frameForSource(source) {
+    return [...document.querySelectorAll("iframe")].find(
+      (frame) => frame.contentWindow === source,
+    );
+  }
+
+  function sendFrameRestore(target) {
+    if (!restore || !target) return;
+    target.postMessage(
+      { type: MEDIA_RESTORE_MESSAGE, session: restore },
+      "*",
+    );
+  }
+
+  window.addEventListener("message", (event) => {
+    if (!frameForSource(event.source)) return;
+    if (event.data?.type === MEDIA_READY_MESSAGE) {
+      sendFrameRestore(event.source);
+      return;
+    }
+    if (event.data?.type !== MEDIA_STATE_MESSAGE) return;
+    framedMedia = {
+      mediaTime: Number.isFinite(event.data.mediaTime)
+        ? event.data.mediaTime
+        : null,
+      mediaPaused:
+        typeof event.data.mediaPaused === "boolean"
+          ? event.data.mediaPaused
+          : null,
+      playbackRate: Number.isFinite(event.data.playbackRate)
+        ? event.data.playbackRate
+        : null,
+    };
+    saveSession();
+    finishFullscreenExit?.();
+  });
+
   function restoreSession() {
     if (!restore || restore.url !== location.href) return;
     window.scrollTo(restore.scrollX || 0, restore.scrollY || 0);
-    const media = document.querySelector("video, audio");
-    if (!media || restore.mediaTime == null) return;
-    media.currentTime = restore.mediaTime;
-    if (restore.playbackRate != null) media.playbackRate = restore.playbackRate;
-    if (restore.mediaPaused === false) media.play().catch(() => {});
+    wireMediaElements();
+    for (const frame of document.querySelectorAll("iframe")) {
+      sendFrameRestore(frame.contentWindow);
+    }
   }
   document.addEventListener("DOMContentLoaded", () => {
     restoreSession();
-    const media = document.querySelector("video, audio");
-    media?.addEventListener("timeupdate", saveSession);
-    media?.addEventListener("ratechange", saveSession);
-    media?.addEventListener("play", saveSession);
-    media?.addEventListener("pause", saveSession);
+    wireMediaElements();
   });
+  new MutationObserver(() => {
+    wireMediaElements();
+    if (restore) {
+      for (const frame of document.querySelectorAll("iframe")) {
+        sendFrameRestore(frame.contentWindow);
+      }
+    }
+  }).observe(document, { childList: true, subtree: true });
   document.addEventListener("scroll", saveSession, { passive: true });
   window.addEventListener("load", restoreSession);
   window.addEventListener("pagehide", saveSession);

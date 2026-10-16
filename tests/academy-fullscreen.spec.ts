@@ -25,6 +25,11 @@ test.beforeEach(async ({ context, page }) => {
         ? "embedded"
         : "fullscreen";
       window.__ZTM_DESKTOP_THEME__ = "dark";
+      try {
+        window.__ZTM_DESKTOP_RESTORE__ = JSON.parse(
+          sessionStorage.getItem("ztm-test-native-restore")
+        ) || undefined;
+      } catch {}
       window.__ZTM_DESKTOP_CALLS__ = [];
       window.__TAURI_INTERNALS__ = {
         invoke(command, args) {
@@ -137,6 +142,185 @@ test("a theme reset reload cannot restore the webview creation-time theme", asyn
   await expect(page.locator("html")).toHaveClass(/dark/);
   await expect(page.locator("html")).not.toHaveClass(/light/);
   await expect(page.locator("html")).toHaveCSS("color-scheme", "dark");
+});
+
+test("reopening a course returns to its last lesson and playback second", async ({
+  page,
+}) => {
+  const lessonUrl =
+    "https://academy.zerotomastery.io/courses/697434/lectures/12345";
+  await page.goto(lessonUrl);
+  await page.evaluate(() => {
+    const video = document.createElement("video");
+    Object.defineProperties(video, {
+      currentTime: { configurable: true, writable: true, value: 93.25 },
+      paused: { configurable: true, value: true },
+      playbackRate: { configurable: true, writable: true, value: 1.5 },
+      readyState: { configurable: true, value: 1 },
+    });
+    document.body.appendChild(video);
+    (
+      window as typeof window & {
+        __ZTM_DESKTOP_SAVE_SESSION__: () => void;
+      }
+    ).__ZTM_DESKTOP_SAVE_SESSION__();
+  });
+
+  await page.goto(
+    "https://academy.zerotomastery.io/courses/enrolled/697434",
+  );
+  await expect(page).toHaveURL(lessonUrl);
+
+  const restored = await page.evaluate(() => {
+    const video = document.createElement("video");
+    Object.defineProperties(video, {
+      currentTime: { configurable: true, writable: true, value: 0 },
+      paused: { configurable: true, value: true },
+      playbackRate: { configurable: true, writable: true, value: 1 },
+      readyState: { configurable: true, value: 1 },
+    });
+    document.body.appendChild(video);
+    return new Promise<{ currentTime: number; playbackRate: number }>(
+      (resolve) =>
+        requestAnimationFrame(() =>
+          resolve({
+            currentTime: video.currentTime,
+            playbackRate: video.playbackRate,
+          }),
+        ),
+    );
+  });
+  expect(restored).toEqual({ currentTime: 93.25, playbackRate: 1.5 });
+});
+
+test("media inside a player frame participates in fullscreen session capture", async ({
+  page,
+}) => {
+  await page.evaluate(() => {
+    const frame = document.createElement("iframe");
+    frame.srcdoc = "<!doctype html><html><body></body></html>";
+    frame.title = "Course video";
+    document.body.appendChild(frame);
+  });
+  const player = page.frameLocator('iframe[title="Course video"]');
+  await player.locator("body").waitFor({ state: "attached" });
+  await player.locator("body").evaluate(async (body) => {
+    const video = document.createElement("video");
+    Object.defineProperties(video, {
+      currentTime: { configurable: true, writable: true, value: 48.5 },
+      paused: { configurable: true, value: false },
+      playbackRate: { configurable: true, writable: true, value: 1.25 },
+    });
+    body.appendChild(video);
+    await new Promise((resolve) => requestAnimationFrame(resolve));
+    video.dispatchEvent(new Event("timeupdate"));
+  });
+
+  await expect
+    .poll(() =>
+      page.evaluate(() =>
+        (
+          window as typeof window & {
+            __ZTM_DESKTOP_CAPTURE_SESSION__: () => {
+              mediaTime: number | null;
+              mediaPaused: boolean | null;
+              playbackRate: number | null;
+            };
+          }
+        ).__ZTM_DESKTOP_CAPTURE_SESSION__(),
+      ),
+    )
+    .toMatchObject({
+      mediaTime: 48.5,
+      mediaPaused: false,
+      playbackRate: 1.25,
+    });
+
+  // Do not dispatch timeupdate after changing the player. Native fullscreen
+  // exit must actively ask the frame for its exact current value rather than
+  // returning the last periodic checkpoint above.
+  await player.locator("video").evaluate((video) => {
+    video.currentTime = 79.75;
+  });
+  await page.evaluate(() =>
+    (
+      window as typeof window & {
+        __ZTM_DESKTOP_EXIT_FULLSCREEN__: () => Promise<void>;
+      }
+    ).__ZTM_DESKTOP_EXIT_FULLSCREEN__(),
+  );
+  await expect
+    .poll(() =>
+      page.evaluate(() => {
+        const calls = (
+          window as typeof window & {
+            __ZTM_DESKTOP_CALLS__: Array<{
+              args: { session?: { mediaTime?: number } };
+            }>;
+          }
+        ).__ZTM_DESKTOP_CALLS__;
+        return calls.at(-1)?.args.session?.mediaTime;
+      }),
+    )
+    .toBe(79.75);
+});
+
+test("returning from fullscreen merges a URL-only fallback with saved video time", async ({
+  page,
+}) => {
+  const lessonUrl =
+    "https://academy.zerotomastery.io/courses/697434/lectures/67890";
+  await page.goto(lessonUrl);
+  await page.evaluate((url) => {
+    const video = document.createElement("video");
+    Object.defineProperties(video, {
+      currentTime: { configurable: true, writable: true, value: 142.75 },
+      paused: { configurable: true, value: true },
+      playbackRate: { configurable: true, writable: true, value: 1.5 },
+      readyState: { configurable: true, value: 1 },
+    });
+    document.body.appendChild(video);
+    (
+      window as typeof window & {
+        __ZTM_DESKTOP_SAVE_SESSION__: () => void;
+      }
+    ).__ZTM_DESKTOP_SAVE_SESSION__();
+    sessionStorage.setItem(
+      "ztm-test-native-restore",
+      JSON.stringify({
+        url,
+        scrollX: 0,
+        scrollY: 0,
+        mediaTime: null,
+        mediaPaused: null,
+        playbackRate: null,
+      }),
+    );
+  }, lessonUrl);
+  await page.reload();
+
+  const restored = await page.evaluate(() => {
+    sessionStorage.removeItem("ztm-test-native-restore");
+    const video = document.createElement("video");
+    Object.defineProperties(video, {
+      currentTime: { configurable: true, writable: true, value: 0 },
+      paused: { configurable: true, value: true },
+      playbackRate: { configurable: true, writable: true, value: 1 },
+      readyState: { configurable: true, value: 1 },
+    });
+    document.body.appendChild(video);
+    return new Promise<{ currentTime: number; playbackRate: number }>(
+      (resolve) =>
+        requestAnimationFrame(() =>
+          resolve({
+            currentTime: video.currentTime,
+            playbackRate: video.playbackRate,
+          }),
+        ),
+    );
+  });
+
+  expect(restored).toEqual({ currentTime: 142.75, playbackRate: 1.5 });
 });
 
 test("Academy course navigation is removed from the document after every render", async ({

@@ -167,6 +167,7 @@ pub struct PromotionState(Mutex<bool>);
 #[derive(Default)]
 struct FullscreenWindowLifecycle {
     entered: bool,
+    exit_requested: bool,
 }
 
 impl FullscreenWindowLifecycle {
@@ -174,8 +175,11 @@ impl FullscreenWindowLifecycle {
         if fullscreen {
             self.entered = true;
             false
+        } else if self.entered && !self.exit_requested {
+            self.exit_requested = true;
+            true
         } else {
-            self.entered
+            false
         }
     }
 }
@@ -231,7 +235,11 @@ pub async fn show_web_view<R: Runtime>(
             };
             let theme = *theme.0.lock().map_err(|e| e.to_string())?;
             let builder = WebviewBuilder::new(LABEL, WebviewUrl::External(url))
-                .initialization_script(init_script("embedded", session.as_ref(), theme));
+                .initialization_script_for_all_frames(init_script(
+                    "embedded",
+                    session.as_ref(),
+                    theme,
+                ));
             window
                 .add_child(
                     builder,
@@ -289,7 +297,7 @@ pub async fn open_course_window<R: Runtime>(
         .inner_size(1280.0, 800.0)
         .min_inner_size(480.0, 360.0)
         .theme(Some(theme.tauri()))
-        .initialization_script(init_script("window", None, theme))
+        .initialization_script_for_all_frames(init_script("window", None, theme))
         .build()
         .map(|_| ())
         .map_err(|e| e.to_string())
@@ -330,7 +338,7 @@ fn promote_embedded<R: Runtime>(
             .title("ZTM Academy")
             .fullscreen(true)
             .theme(Some(theme.tauri()))
-            .initialization_script(fullscreen_init)
+            .initialization_script_for_all_frames(fullscreen_init)
             .on_navigation(move |requested| {
                 if !is_academy_exit_navigation(requested) {
                     return true;
@@ -389,14 +397,13 @@ fn promote_embedded<R: Runtime>(
             .map(|mut lifecycle| lifecycle.observe(fullscreen))
             .unwrap_or(false);
         if should_destroy {
-            if let Ok(url) = observed_window.url() {
-                let session = PageSession::at_url(url);
-                let _ =
-                    observed_window
-                        .app_handle()
-                        .emit_to(MAIN_WINDOW_LABEL, DEMOTED_EVENT, session);
-            }
-            let _ = observed_window.destroy();
+            // Do not destroy the webview here: its focused video iframe may have
+            // consumed Escape, so the page-level key handler has not captured
+            // the final playback position. Ask the still-live top frame to send
+            // its rich session through `web_view_fullscreen`; that command emits
+            // the demotion event and destroys this disposable window afterward.
+            let _ = observed_window
+                .eval("window.__ZTM_DESKTOP_EXIT_FULLSCREEN__?.().catch(console.error);");
         }
     });
     Ok(())
@@ -653,7 +660,11 @@ mod tests {
         );
         assert!(
             lifecycle.observe(false),
-            "leaving fullscreen must close the window"
+            "leaving fullscreen must request page-side demotion"
+        );
+        assert!(
+            !lifecycle.observe(false),
+            "repeated exit resizes must not request demotion twice"
         );
     }
 }

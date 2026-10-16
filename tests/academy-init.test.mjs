@@ -27,12 +27,14 @@ function runAcademyScript(
   courseBackLinks = [],
   theme = "dark",
   siteNavigation = [],
+  storageEntries = [],
+  mediaElements = [],
 ) {
   const documentListeners = new Map();
   const windowListeners = new Map();
   const styles = new Map();
   const invokes = [];
-  const storage = new Map();
+  const storage = new Map(storageEntries);
   const sessionStorage = new Map();
   const scrollCalls = [];
   const document = {
@@ -51,11 +53,14 @@ function runAcademyScript(
       : null,
     getElementById: (id) => styles.get(id) ?? null,
     createElement: () => ({ id: "", textContent: "" }),
-    querySelector: () => null,
+    querySelector: (selector) =>
+      selector === "video, audio" ? (mediaElements[0] ?? null) : null,
     querySelectorAll: (selector) => {
       if (selector === ".ztm-sidebar, .ztm-sidebar-links") {
         return siteNavigation;
       }
+      if (selector === "video, audio") return mediaElements;
+      if (selector === "iframe") return [];
       return selector.startsWith("img[") ? lessonLogos : courseBackLinks;
     },
     addEventListener: (name, listener) => documentListeners.set(name, listener),
@@ -80,15 +85,21 @@ function runAcademyScript(
     addEventListener: (name, listener) => windowListeners.set(name, listener),
   };
   window.top = window;
+  const location = {
+    hostname: "academy.zerotomastery.io",
+    href: "https://academy.zerotomastery.io/courses/enrolled/697434",
+    pathname: "/courses/enrolled/697434",
+    replace(url) {
+      this.href = url;
+      this.pathname = new URL(url).pathname;
+    },
+  };
 
   vm.runInNewContext(initScript, {
     Boolean,
     console,
     document,
-    location: {
-      hostname: "academy.zerotomastery.io",
-      href: "https://academy.zerotomastery.io/courses/enrolled/697434",
-    },
+    location,
     localStorage: {
       getItem: (key) => storage.get(key) ?? null,
       setItem: (key, value) => storage.set(key, value),
@@ -99,6 +110,7 @@ function runAcademyScript(
       }
       observe() {}
     },
+    URL,
     window,
   });
 
@@ -106,7 +118,9 @@ function runAcademyScript(
     document,
     documentListeners,
     invokes,
+    location,
     scrollCalls,
+    storage,
     styles,
     window,
     windowListeners,
@@ -342,6 +356,46 @@ test("Escape from the promoted window requests its disposal", () => {
   ]);
 });
 
+test("native fullscreen exit captures playback before disposing its window", () => {
+  const media = {
+    currentTime: 187.25,
+    paused: false,
+    playbackRate: 1.5,
+    readyState: 1,
+    addEventListener() {},
+  };
+  const runtime = runAcademyScript(
+    "fullscreen",
+    null,
+    [],
+    true,
+    [],
+    "dark",
+    [],
+    [],
+    [media],
+  );
+
+  runtime.window.__ZTM_DESKTOP_EXIT_FULLSCREEN__();
+
+  assert.deepEqual(JSON.parse(JSON.stringify(runtime.invokes)), [
+    {
+      command: "web_view_fullscreen",
+      args: {
+        fullscreen: false,
+        session: {
+          url: "https://academy.zerotomastery.io/courses/enrolled/697434",
+          scrollX: 12,
+          scrollY: 34,
+          mediaTime: 187.25,
+          mediaPaused: false,
+          playbackRate: 1.5,
+        },
+      },
+    },
+  ]);
+});
+
 test("a transferred session restores the page position", () => {
   const restore = {
     url: "https://academy.zerotomastery.io/courses/enrolled/697434",
@@ -356,4 +410,63 @@ test("a transferred session restores the page position", () => {
   runtime.documentListeners.get("DOMContentLoaded")();
 
   assert.deepEqual(runtime.scrollCalls, [{ x: 45, y: 900 }]);
+});
+
+test("a URL-only fullscreen fallback retains the durable playback checkpoint", () => {
+  const url = "https://academy.zerotomastery.io/courses/enrolled/697434";
+  const saved = {
+    url,
+    scrollX: 45,
+    scrollY: 900,
+    mediaTime: 142.75,
+    mediaPaused: true,
+    playbackRate: 1.5,
+  };
+  const fallback = {
+    url,
+    scrollX: 0,
+    scrollY: 0,
+    mediaTime: null,
+    mediaPaused: null,
+    playbackRate: null,
+  };
+  const mediaListeners = new Map();
+  const media = {
+    currentTime: 0,
+    paused: true,
+    playbackRate: 1,
+    readyState: 1,
+    addEventListener: (name, listener) => mediaListeners.set(name, listener),
+    pause() {},
+    play: () => Promise.resolve(),
+  };
+  const progress = JSON.stringify({ "course:697434": saved });
+  const runtime = runAcademyScript(
+    "embedded",
+    fallback,
+    [],
+    true,
+    [],
+    "dark",
+    [],
+    [["ztm-desktop-course-progress-v2", progress]],
+    [media],
+  );
+
+  runtime.documentListeners.get("DOMContentLoaded")();
+
+  assert.equal(media.currentTime, 142.75);
+  assert.equal(media.playbackRate, 1.5);
+});
+
+test("native Academy webviews initialize the progress relay in every frame", () => {
+  const rust = readFileSync(
+    new URL("../src-tauri/src/web_view.rs", import.meta.url),
+    "utf8",
+  );
+
+  assert.equal(
+    rust.match(/initialization_script_for_all_frames/g)?.length,
+    3,
+  );
 });
