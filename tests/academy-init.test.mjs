@@ -26,6 +26,7 @@ function runAcademyScript(
   documentReady = true,
   courseBackLinks = [],
   theme = "dark",
+  siteNavigation = [],
 ) {
   const documentListeners = new Map();
   const windowListeners = new Map();
@@ -51,8 +52,12 @@ function runAcademyScript(
     getElementById: (id) => styles.get(id) ?? null,
     createElement: () => ({ id: "", textContent: "" }),
     querySelector: () => null,
-    querySelectorAll: (selector) =>
-      selector.startsWith("img[") ? lessonLogos : courseBackLinks,
+    querySelectorAll: (selector) => {
+      if (selector === ".ztm-sidebar, .ztm-sidebar-links") {
+        return siteNavigation;
+      }
+      return selector.startsWith("img[") ? lessonLogos : courseBackLinks;
+    },
     addEventListener: (name, listener) => documentListeners.set(name, listener),
   };
   const window = {
@@ -140,25 +145,35 @@ test("embedded fullscreen invokes the native promotion command once per transiti
   ]);
 });
 
-test("embedded Academy CSS hides navigation that can leave the lesson", () => {
+test("embedded Academy CSS only controls the app-selected palette", () => {
   const runtime = runAcademyScript();
   const style = runtime.styles.get("ztm-desktop-app-style");
 
   assert.match(style.textContent, /color-scheme: dark !important/);
   assert.match(style.textContent, /data-ztm-dark-surface/);
-  assert.match(
-    style.textContent,
-    /\.ztm-sidebar, div\.nav:has\(a\[href="\/"\] img\[alt="school logo"\]\)/,
-  );
+  assert.doesNotMatch(style.textContent, /display:\s*none/);
+  assert.doesNotMatch(style.textContent, /ztm-sidebar/);
   assert.equal(runtime.styles.size, 1);
 });
 
-test("fullscreen Academy CSS leaves the header available as an exit control", () => {
+test("fullscreen Academy CSS leaves navigation removal to the DOM observer", () => {
   const runtime = runAcademyScript("fullscreen");
   const style = runtime.styles.get("ztm-desktop-app-style");
 
   assert.match(style.textContent, /color-scheme: dark !important/);
-  assert.match(style.textContent, /\.ztm-sidebar \{ display: none !important; \}/);
+  assert.doesNotMatch(style.textContent, /display:\s*none/);
+});
+
+test("Academy course navigation is structurally removed", () => {
+  let removals = 0;
+  const navigation = {
+    closest: () => null,
+    remove: () => (removals += 1),
+  };
+
+  runAcademyScript("embedded", null, [], true, [], "dark", [navigation]);
+
+  assert.equal(removals, 1);
 });
 
 test("the Academy document uses the app-selected theme", () => {
@@ -189,6 +204,13 @@ test("course overview detection supports every enrolled course identifier", () =
     /courses\\\/\(\?:enrolled\\\/\)\?\[\^\/\]\+/,
     "the dark overview palette must cover /courses/enrolled/{id}",
   );
+});
+
+test("palette normalization includes the Academy dashboard and categories", () => {
+  assert.match(initScript, /location\.pathname === "\/"/);
+  assert.match(initScript, /courses\\\/category/);
+  assert.match(initScript, /ztmLightSurface/);
+  assert.match(initScript, /ztm-light-palette/);
 });
 
 test("theme initialization includes Teachable authentication pages", () => {

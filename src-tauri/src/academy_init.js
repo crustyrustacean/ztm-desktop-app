@@ -6,8 +6,7 @@
   const isTeachableAuthHost = location.hostname === "sso.teachable.com";
   if (!isAcademyHost && !isTeachableAuthHost) return;
 
-  // This is deliberately the only Academy style the desktop app injects.
-  const SIDEBAR = ".ztm-sidebar";
+  const SITE_NAVIGATION = ".ztm-sidebar, .ztm-sidebar-links";
   const LESSON_NAV = 'div.nav:has(a[href="/"] img[alt="school logo"])';
   const HOME_LOGO =
     'img[alt="school logo"], img[src*="ztm-logo-academy.svg"]';
@@ -35,6 +34,14 @@
     return /^\/courses\/(?:enrolled\/)?[^/]+\/?$/.test(location.pathname);
   }
 
+  function isAcademyCatalog() {
+    return (
+      isAcademyHost &&
+      (location.pathname === "/" ||
+        /^\/courses\/category\/[^/]+\/?$/.test(location.pathname))
+    );
+  }
+
   function isAuthenticationPage() {
     return (
       isTeachableAuthHost ||
@@ -43,12 +50,15 @@
   }
 
   function shouldNormalizePalette() {
-    return isCourseOverview() || isAuthenticationPage();
+    return isAcademyCatalog() || isCourseOverview() || isAuthenticationPage();
   }
 
   function rgbChannels(value) {
-    const match = value.match(/^rgba?\((\d+),\s*(\d+),\s*(\d+)/);
-    return match ? match.slice(1).map(Number) : null;
+    const match = value.match(
+      /^rgba?\((\d+),\s*(\d+),\s*(\d+)(?:,\s*([\d.]+))?/,
+    );
+    if (match?.[4] === "0") return null;
+    return match ? match.slice(1, 4).map(Number) : null;
   }
 
   function neutralRgb(value, minimum, maximum) {
@@ -65,34 +75,66 @@
     return Boolean(channels?.every((channel) => channel <= 80));
   }
 
+  function darkNeutralRgb(value) {
+    const channels = rgbChannels(value);
+    return Boolean(
+      channels?.every((channel) => channel <= 80) &&
+        Math.max(...channels) - Math.min(...channels) <= 18,
+    );
+  }
+
+  function lightRgb(value) {
+    const channels = rgbChannels(value);
+    return Boolean(channels?.slice(0, 3).every((channel) => channel >= 175));
+  }
+
+  function hasDarkBackdrop(element) {
+    for (let current = element; current; current = current.parentElement) {
+      if (current.dataset.ztmLightSurface === "true") return true;
+      const background = getComputedStyle(current).backgroundColor;
+      if (rgbChannels(background)) return darkNeutralRgb(background);
+    }
+    return false;
+  }
+
   function normalizeCourseOverview() {
     paletteScheduled = false;
     if (!document.body || typeof getComputedStyle !== "function") return;
     const elements = [document.body, ...document.body.querySelectorAll("*")];
-    if (appTheme !== "dark" || !shouldNormalizePalette()) {
-      delete document.documentElement.dataset.ztmDarkPalette;
-      for (const element of elements) {
-        delete element.dataset.ztmDarkSurface;
-        delete element.dataset.ztmDarkText;
-      }
+    delete document.documentElement.dataset.ztmDarkPalette;
+    delete document.documentElement.dataset.ztmLightPalette;
+    for (const element of elements) {
+      delete element.dataset.ztmDarkSurface;
+      delete element.dataset.ztmDarkText;
+      delete element.dataset.ztmLightSurface;
+      delete element.dataset.ztmLightText;
+    }
+    if (!shouldNormalizePalette()) {
       return;
     }
-    document.documentElement.dataset.ztmDarkPalette = "true";
+
+    document.documentElement.dataset[
+      appTheme === "dark" ? "ztmDarkPalette" : "ztmLightPalette"
+    ] = "true";
 
     for (const element of elements) {
       if (element.closest("svg, picture, video, canvas")) continue;
       const computed = getComputedStyle(element);
-      if (
-        element.dataset.ztmDarkSurface === "true" ||
-        neutralRgb(computed.backgroundColor, 215, 255)
-      ) {
-        element.dataset.ztmDarkSurface = "true";
-      }
-      if (
-        element.dataset.ztmDarkText === "true" ||
-        darkRgb(computed.color)
-      ) {
-        element.dataset.ztmDarkText = "true";
+      if (appTheme === "dark") {
+        if (neutralRgb(computed.backgroundColor, 215, 255)) {
+          element.dataset.ztmDarkSurface = "true";
+        }
+        if (darkRgb(computed.color)) {
+          element.dataset.ztmDarkText = "true";
+        }
+      } else {
+        const darkBackdrop = hasDarkBackdrop(element);
+        if (darkNeutralRgb(computed.backgroundColor)) {
+          element.dataset.ztmLightSurface = "true";
+        }
+        if (lightRgb(computed.color) && darkBackdrop) {
+          element.dataset.ztmLightText = "true";
+        }
       }
     }
   }
@@ -104,9 +146,6 @@
   }
 
   function injectedCss() {
-    const navigationRule = isFullscreenView
-      ? `${SIDEBAR} { display: none !important; }`
-      : `${SIDEBAR}, ${LESSON_NAV} { display: none !important; }`;
     return `:root { color-scheme: ${appTheme} !important; }
       :root[data-ztm-dark-palette="true"],
       :root[data-ztm-dark-palette="true"] body {
@@ -120,7 +159,18 @@
       :root[data-theme="dark"] [data-ztm-dark-text="true"] {
         color: #f5f5f5 !important;
       }
-      ${navigationRule}`;
+      :root[data-ztm-light-palette="true"],
+      :root[data-ztm-light-palette="true"] body {
+        background-color: #f8fafc !important;
+        color: #111827 !important;
+      }
+      :root[data-theme="light"] [data-ztm-light-surface="true"] {
+        background-color: #ffffff !important;
+        border-color: #d1d5db !important;
+      }
+      :root[data-theme="light"] [data-ztm-light-text="true"] {
+        color: #111827 !important;
+      }`;
   }
 
   function applyAppTheme(theme) {
@@ -190,8 +240,14 @@
       }
     }
   }
+  function removeSiteNavigation() {
+    for (const navigation of document.querySelectorAll(SITE_NAVIGATION)) {
+      (navigation.closest?.(".ztm-sidebar") || navigation).remove();
+    }
+  }
   function syncDocument() {
     applyAppTheme(appTheme);
+    removeSiteNavigation();
     configureLessonNav();
     scheduleCoursePalette();
   }

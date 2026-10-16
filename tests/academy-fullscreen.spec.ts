@@ -124,6 +124,40 @@ test("a theme reset reload cannot restore the webview creation-time theme", asyn
   await expect(page.locator("html")).toHaveClass(/light/);
   await expect(page.locator("html")).not.toHaveClass(/dark/);
   await expect(page.locator("html")).toHaveCSS("color-scheme", "light");
+
+  await page.evaluate(() => {
+    (
+      window as typeof window & {
+        __ZTM_DESKTOP_SET_THEME__: (theme: string) => void;
+      }
+    ).__ZTM_DESKTOP_SET_THEME__("dark");
+  });
+  await page.reload();
+
+  await expect(page.locator("html")).toHaveClass(/dark/);
+  await expect(page.locator("html")).not.toHaveClass(/light/);
+  await expect(page.locator("html")).toHaveCSS("color-scheme", "dark");
+});
+
+test("Academy course navigation is removed from the document after every render", async ({
+  page,
+}) => {
+  const renderNavigation = () =>
+    page.evaluate(() => {
+      document.body.insertAdjacentHTML(
+        "beforeend",
+        `<ul class="ztm-sidebar-links">
+          <li><a href="https://academy.zerotomastery.io/">Dashboard</a></li>
+          <li><a href="/courses/category/bootcamps">Bootcamps</a></li>
+        </ul>`,
+      );
+    });
+
+  await renderNavigation();
+  await expect(page.locator(".ztm-sidebar-links")).toHaveCount(0);
+
+  await renderNavigation();
+  await expect(page.locator(".ztm-sidebar-links")).toHaveCount(0);
 });
 
 test("the embedded Academy page enforces the same app-selected theme", async ({
@@ -176,6 +210,43 @@ test("the embedded course overview normalizes only hard-coded neutral surfaces",
   );
   await expect(page.getByAltText("course artwork")).not.toHaveAttribute(
     "data-ztm-dark-surface",
+    "true",
+  );
+});
+
+test("the Academy dashboard follows the app light palette", async ({ page }) => {
+  await page.goto("https://academy.zerotomastery.io/?embedded");
+  await page.evaluate(() => {
+    (
+      window as typeof window & {
+        __ZTM_DESKTOP_SET_THEME__: (theme: string) => void;
+      }
+    ).__ZTM_DESKTOP_SET_THEME__("light");
+    document.body.innerHTML = `
+      <main class="catalog" style="background: rgb(32, 32, 32); color: white">
+        <section class="course-card" style="background: rgb(24, 24, 24); color: rgb(245, 245, 245)">
+          <span>Course title</span>
+          <button style="background: rgb(245, 0, 87); color: white">Open course</button>
+          <img alt="course artwork" src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==">
+        </section>
+      </main>`;
+  });
+
+  const catalog = page.locator(".catalog");
+  const card = page.locator(".course-card");
+  await expect(page.locator("html")).toHaveAttribute(
+    "data-ztm-light-palette",
+    "true",
+  );
+  await expect(catalog).toHaveAttribute("data-ztm-light-surface", "true");
+  await expect(catalog).toHaveCSS("background-color", "rgb(255, 255, 255)");
+  await expect(card).toHaveCSS("color", "rgb(17, 24, 39)");
+  await expect(page.getByRole("button", { name: "Open course" })).toHaveCSS(
+    "color",
+    "rgb(255, 255, 255)",
+  );
+  await expect(page.getByAltText("course artwork")).not.toHaveAttribute(
+    "data-ztm-light-surface",
     "true",
   );
 });

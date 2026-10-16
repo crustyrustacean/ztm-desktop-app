@@ -21,8 +21,9 @@ const PROMOTED_EVENT: &str = "web-view-promoted";
 const DEMOTED_EVENT: &str = "web-view-demoted";
 const MAIN_WINDOW_LABEL: &str = "main";
 const HOME_URL: &str = "https://academy.zerotomastery.io/";
-/// Hides the site's sidebar and handles fullscreen changes (see academy_init.js).
+/// Removes the site's navigation and handles fullscreen changes (see academy_init.js).
 const INIT_SCRIPT: &str = include_str!("academy_init.js");
+const THEME_STORAGE_KEY: &str = "ztm-desktop-app-theme";
 
 fn init_script(view: &str, session: Option<&PageSession>, theme: WebTheme) -> String {
     let session = serde_json::to_string(&session).expect("page session serializes");
@@ -56,6 +57,20 @@ impl WebTheme {
             Self::Dark => "dark",
         }
     }
+}
+
+fn theme_update_script(theme: WebTheme, reset: bool) -> String {
+    let theme = theme.script();
+    let reload = if reset {
+        "window.location.reload();"
+    } else {
+        ""
+    };
+    format!(
+        "window.__ZTM_DESKTOP_SET_THEME__?.({theme:?});\n\
+         try {{ window.sessionStorage?.setItem({THEME_STORAGE_KEY:?}, {theme:?}); }} catch {{}}\n\
+         {reload}"
+    )
 }
 
 #[cfg(target_os = "windows")]
@@ -495,28 +510,16 @@ pub fn set_web_view_theme<R: Runtime>(
                 .map_err(|e| e.to_string())?;
             if label != MAIN_WINDOW_LABEL {
                 window
-                    .eval(format!(
-                        "window.__ZTM_DESKTOP_SET_THEME__?.({:?})",
-                        theme.script()
-                    ))
+                    .eval(theme_update_script(theme, reset))
                     .map_err(|e| e.to_string())?;
-                if reset {
-                    window.reload().map_err(|e| e.to_string())?;
-                }
             }
         }
     }
     if let Some(webview) = app.get_webview(LABEL) {
         set_webview_native_theme(&webview, theme)?;
         webview
-            .eval(format!(
-                "window.__ZTM_DESKTOP_SET_THEME__?.({:?})",
-                theme.script()
-            ))
+            .eval(theme_update_script(theme, reset))
             .map_err(|e| e.to_string())?;
-        if reset {
-            webview.reload().map_err(|e| e.to_string())?;
-        }
     }
     Ok(())
 }
@@ -582,7 +585,20 @@ fn attach_overlay(child: &gtk::Widget) -> Result<(), &'static str> {
 
 #[cfg(test)]
 mod tests {
-    use super::{FullscreenWindowLifecycle, course_url, is_academy_exit_navigation};
+    use super::{
+        FullscreenWindowLifecycle, WebTheme, course_url, is_academy_exit_navigation,
+        theme_update_script,
+    };
+
+    #[test]
+    fn theme_reset_persists_the_new_value_before_reloading() {
+        let script = theme_update_script(WebTheme::Dark, true);
+        let persist = script.find("sessionStorage").unwrap();
+        let reload = script.find("location.reload").unwrap();
+
+        assert!(script.contains("SET_THEME__?.(\"dark\")"));
+        assert!(persist < reload);
+    }
 
     #[test]
     fn accepts_only_https_zero_to_mastery_pages() {
