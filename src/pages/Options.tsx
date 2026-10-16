@@ -37,7 +37,7 @@ export default function Options({
   function handleThemeChange(checked: boolean) {
     const next: Theme = checked ? "dark" : "light";
     setTheme(next);
-    applyTheme(next);
+    void applyTheme(next);
     saveTheme(next).catch((error) =>
       console.error("Could not save theme", error),
     );

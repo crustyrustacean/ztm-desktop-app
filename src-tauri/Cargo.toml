@@ -31,6 +31,10 @@ tempfile = "3"
 gtk = "0.18"
 webkit2gtk = "2.0"
 
+[target.'cfg(target_os = "windows")'.dependencies]
+webview2-com = "0.39"
+windows-core = "0.62"
+
 
 # Read the optimization guideline for more details: https://tauri.app/concept/size/#cargo-configuration
 [profile.release]

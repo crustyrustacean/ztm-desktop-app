@@ -1,0 +1,315 @@
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import test from "node:test";
+import vm from "node:vm";
+
+const initScript = readFileSync(
+  new URL("../src-tauri/src/academy_init.js", import.meta.url),
+  "utf8",
+);
+const defaultCapability = JSON.parse(
+  readFileSync(
+    new URL("../src-tauri/capabilities/default.json", import.meta.url),
+    "utf8",
+  ),
+);
+
+test("the app shell is permitted to dispose its native child webview", () => {
+  assert.ok(defaultCapability.permissions.includes("allow-dispose-web-view"));
+  assert.ok(!defaultCapability.permissions.includes("allow-hide-web-view"));
+});
+
+function runAcademyScript(
+  view = "embedded",
+  restore = null,
+  lessonLogos = [],
+  documentReady = true,
+  courseBackLinks = [],
+  theme = "dark",
+) {
+  const documentListeners = new Map();
+  const windowListeners = new Map();
+  const styles = new Map();
+  const invokes = [];
+  const storage = new Map();
+  const scrollCalls = [];
+  const document = {
+    fullscreenElement: null,
+    webkitFullscreenElement: null,
+    documentElement: documentReady
+      ? {
+          appendChild: (element) => styles.set(element.id, element),
+          classList: { contains: () => false, toggle() {} },
+          dataset: {},
+          style: {},
+        }
+      : null,
+    head: documentReady
+      ? { appendChild: (element) => styles.set(element.id, element) }
+      : null,
+    getElementById: (id) => styles.get(id) ?? null,
+    createElement: () => ({ id: "", textContent: "" }),
+    querySelector: () => null,
+    querySelectorAll: (selector) =>
+      selector.startsWith("img[") ? lessonLogos : courseBackLinks,
+    addEventListener: (name, listener) => documentListeners.set(name, listener),
+  };
+  const window = {
+    __ZTM_DESKTOP_VIEW__: view,
+    __ZTM_DESKTOP_RESTORE__: restore,
+    __ZTM_DESKTOP_THEME__: theme,
+    __TAURI_INTERNALS__: {
+      invoke: (command, args) => {
+        invokes.push({ command, args });
+        return Promise.resolve();
+      },
+    },
+    scrollX: 12,
+    scrollY: 34,
+    scrollTo: (x, y) => scrollCalls.push({ x, y }),
+    addEventListener: (name, listener) => windowListeners.set(name, listener),
+  };
+  window.top = window;
+
+  vm.runInNewContext(initScript, {
+    Boolean,
+    console,
+    document,
+    location: {
+      hostname: "academy.zerotomastery.io",
+      href: "https://academy.zerotomastery.io/courses/enrolled/697434",
+    },
+    localStorage: {
+      getItem: (key) => storage.get(key) ?? null,
+      setItem: (key, value) => storage.set(key, value),
+    },
+    MutationObserver: class {
+      constructor(callback) {
+        this.callback = callback;
+      }
+      observe() {}
+    },
+    window,
+  });
+
+  return {
+    document,
+    documentListeners,
+    invokes,
+    scrollCalls,
+    styles,
+    windowListeners,
+  };
+}
+
+test("initialization survives running before the document element exists", () => {
+  const runtime = runAcademyScript("fullscreen", null, [], false);
+
+  assert.equal(runtime.styles.size, 0);
+  assert.equal(typeof runtime.documentListeners.get("DOMContentLoaded"), "function");
+});
+
+test("embedded fullscreen invokes the native promotion command once per transition", () => {
+  const runtime = runAcademyScript();
+  runtime.document.fullscreenElement = {};
+
+  runtime.documentListeners.get("fullscreenchange")();
+  runtime.documentListeners.get("fullscreenchange")();
+
+  assert.deepEqual(JSON.parse(JSON.stringify(runtime.invokes)), [
+    {
+      command: "web_view_fullscreen",
+      args: {
+        fullscreen: true,
+        session: {
+          url: "https://academy.zerotomastery.io/courses/enrolled/697434",
+          scrollX: 12,
+          scrollY: 34,
+          mediaTime: null,
+          mediaPaused: null,
+          playbackRate: null,
+        },
+      },
+    },
+  ]);
+});
+
+test("embedded Academy CSS hides navigation that can leave the lesson", () => {
+  const runtime = runAcademyScript();
+  const style = runtime.styles.get("ztm-desktop-app-style");
+
+  assert.match(style.textContent, /color-scheme: dark !important/);
+  assert.match(style.textContent, /data-ztm-dark-surface/);
+  assert.match(
+    style.textContent,
+    /\.ztm-sidebar, div\.nav:has\(a\[href="\/"\] img\[alt="school logo"\]\)/,
+  );
+  assert.equal(runtime.styles.size, 1);
+});
+
+test("fullscreen Academy CSS leaves the header available as an exit control", () => {
+  const runtime = runAcademyScript("fullscreen");
+  const style = runtime.styles.get("ztm-desktop-app-style");
+
+  assert.match(style.textContent, /color-scheme: dark !important/);
+  assert.match(style.textContent, /\.ztm-sidebar \{ display: none !important; \}/);
+});
+
+test("the Academy document uses the app-selected theme", () => {
+  const runtime = runAcademyScript("fullscreen", null, [], true, [], "light");
+
+  assert.equal(runtime.document.documentElement.dataset.theme, "light");
+  assert.equal(runtime.document.documentElement.style.colorScheme, "light");
+  assert.match(
+    runtime.styles.get("ztm-desktop-app-style").textContent,
+    /color-scheme: light !important/,
+  );
+});
+
+test("course overview detection supports every enrolled course identifier", () => {
+  assert.match(
+    initScript,
+    /courses\\\/\(\?:enrolled\\\/\)\?\[\^\/\]\+/,
+    "the dark overview palette must cover /courses/enrolled/{id}",
+  );
+});
+
+test("the Academy lesson header cannot navigate home before it is hidden", () => {
+  const runtime = runAcademyScript();
+  let prevented = false;
+  let stopped = false;
+  const nav = {};
+  const link = {
+    closest: (selector) => (selector === "div.nav" ? nav : null),
+    querySelector: () => ({}),
+  };
+
+  runtime.documentListeners.get("click")({
+    target: { closest: () => link },
+    preventDefault: () => (prevented = true),
+    stopImmediatePropagation: () => (stopped = true),
+  });
+
+  assert.equal(prevented, true);
+  assert.equal(stopped, true);
+});
+
+test("the fullscreen Academy logo returns to the embedded app with its session", () => {
+  const runtime = runAcademyScript("fullscreen");
+  const nav = {};
+  const link = {
+    closest: (selector) => (selector === "div.nav" ? nav : null),
+    querySelector: () => ({}),
+  };
+
+  runtime.documentListeners.get("click")({
+    target: { closest: () => link },
+    preventDefault() {},
+    stopImmediatePropagation() {},
+  });
+
+  assert.deepEqual(JSON.parse(JSON.stringify(runtime.invokes)), [
+    {
+      command: "web_view_fullscreen",
+      args: {
+        fullscreen: false,
+        session: {
+          url: "https://academy.zerotomastery.io/courses/enrolled/697434",
+          scrollX: 12,
+          scrollY: 34,
+          mediaTime: null,
+          mediaPaused: null,
+          playbackRate: null,
+        },
+      },
+    },
+  ]);
+});
+
+test("the Academy lesson header is structurally removed", () => {
+  let removed = false;
+  const nav = { remove: () => (removed = true) };
+  const link = { parentElement: nav };
+  const logo = {
+    closest: (selector) => (selector === "div.nav" ? nav : link),
+  };
+
+  runAcademyScript("embedded", null, [logo]);
+
+  assert.equal(removed, true);
+});
+
+test("the fullscreen Academy home link is converted into an exit control", () => {
+  const attributes = new Map([["href", "/"]]);
+  const nav = {};
+  const link = {
+    dataset: {},
+    closest: (selector) => (selector === "div.nav" ? nav : null),
+    removeAttribute: (name) => attributes.delete(name),
+    setAttribute: (name, value) => attributes.set(name, value),
+  };
+  const logo = {
+    closest: (selector) => (selector === "a" ? link : nav),
+  };
+
+  runAcademyScript("fullscreen", null, [logo]);
+
+  assert.equal(attributes.has("href"), false);
+  assert.equal(link.dataset.ztmFullscreenExit, "true");
+  assert.equal(attributes.get("role"), "button");
+  assert.equal(attributes.get("title"), "Return to ZTM Desktop");
+});
+
+test("the fullscreen curriculum link is converted into an exit control", () => {
+  const attributes = new Map([["href", "/courses/697434"]]);
+  const link = {
+    dataset: {},
+    removeAttribute: (name) => attributes.delete(name),
+    setAttribute: (name, value) => attributes.set(name, value),
+  };
+
+  runAcademyScript("fullscreen", null, [], true, [link]);
+
+  assert.equal(attributes.has("href"), false);
+  assert.equal(link.dataset.ztmFullscreenExit, "true");
+  assert.equal(attributes.get("title"), "Return to ZTM Desktop");
+});
+
+test("Escape from the promoted window requests its disposal", () => {
+  const runtime = runAcademyScript("fullscreen");
+
+  runtime.windowListeners.get("keydown")({ key: "Escape" });
+
+  assert.deepEqual(JSON.parse(JSON.stringify(runtime.invokes)), [
+    {
+      command: "web_view_fullscreen",
+      args: {
+        fullscreen: false,
+        session: {
+          url: "https://academy.zerotomastery.io/courses/enrolled/697434",
+          scrollX: 12,
+          scrollY: 34,
+          mediaTime: null,
+          mediaPaused: null,
+          playbackRate: null,
+        },
+      },
+    },
+  ]);
+});
+
+test("a transferred session restores the page position", () => {
+  const restore = {
+    url: "https://academy.zerotomastery.io/courses/enrolled/697434",
+    scrollX: 45,
+    scrollY: 900,
+    mediaTime: null,
+    mediaPaused: null,
+    playbackRate: null,
+  };
+  const runtime = runAcademyScript("embedded", restore);
+
+  runtime.documentListeners.get("DOMContentLoaded")();
+
+  assert.deepEqual(runtime.scrollCalls, [{ x: 45, y: 900 }]);
+});

@@ -5166,6 +5166,8 @@ dependencies = [
  "tauri-plugin-opener",
  "tempfile",
  "webkit2gtk",
+ "webview2-com",
+ "windows-core",
 ]
 
 [[package]]

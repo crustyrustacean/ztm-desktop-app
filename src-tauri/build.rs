@@ -10,9 +10,10 @@ fn main() {
             "save_state",
             "show_web_view",
             "set_web_view_bounds",
-            "hide_web_view",
+            "dispose_web_view",
             "open_course_window",
             "web_view_fullscreen",
+            "set_web_view_theme",
         ]),
     ))
     .expect("failed to run tauri-build");

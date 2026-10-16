@@ -1,5 +1,6 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { invoke, isTauri } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import { SearchIcon } from "lucide-react";
 import Dashboard from "./pages/Dashboard";
 import Favourites from "./pages/Favourites";
@@ -10,7 +11,11 @@ import {
   InputGroupAddon,
   InputGroupInput,
 } from "@/components/ui/input-group";
-import { WebView, type WebViewRequest } from "@/components/web-view";
+import {
+  WebView,
+  type WebViewRequest,
+  type WebViewSession,
+} from "@/components/web-view";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { useAcademyMember } from "@/hooks/use-academy-member";
@@ -32,6 +37,23 @@ function App() {
   const [webViewRequest, setWebViewRequest] = useState<WebViewRequest | null>(
     null,
   );
+
+  useEffect(() => {
+    if (!isTauri()) return;
+    const promoted = listen("web-view-promoted", () => setView("dashboard"));
+    const demoted = listen<WebViewSession>("web-view-demoted", (event) => {
+      setWebViewRequest((previous) => ({
+        url: event.payload.url,
+        id: (previous?.id ?? 0) + 1,
+        session: event.payload,
+      }));
+      setView("web-view");
+    });
+    return () => {
+      promoted.then((stop) => stop());
+      demoted.then((stop) => stop());
+    };
+  }, []);
 
   const canOpenCourse = useCallback(
     (course: Course) => courseUrl(course, academyMember) !== null,

@@ -11,8 +11,9 @@
     "allow-save-state",
     "allow-show-web-view",
     "allow-set-web-view-bounds",
-    "allow-hide-web-view",
+    "allow-dispose-web-view",
     "allow-open-course-window",
+    "allow-set-web-view-theme",
     "opener:default",
     {
       "identifier": "opener:allow-open-url",
