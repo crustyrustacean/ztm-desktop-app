@@ -4714,6 +4714,10 @@ fn webview_overlay(window: &Window) -> (gtk::Overlay, gtk::Fixed) {
     .unwrap_or_else(|| {
       let layer = gtk::Fixed::new();
       layer.set_widget_name(WEBVIEW_LAYER_NAME);
+      layer.set_halign(gtk::Align::Fill);
+      layer.set_valign(gtk::Align::Fill);
+      layer.set_hexpand(true);
+      layer.set_vexpand(true);
       overlay.add_overlay(&layer);
       overlay.set_overlay_pass_through(&layer, true);
       layer.show();
