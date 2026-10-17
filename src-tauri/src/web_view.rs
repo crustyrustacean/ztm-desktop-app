@@ -329,8 +329,10 @@ pub async fn show_web_view<R: Runtime>(
 /// Tauri's child-webview implementation is not usable on Linux: GTK packs child
 /// webviews into the window's layout container and ignores their requested bounds.
 /// Reparenting the WebKit widgets fixes the bounds but violates Wry's widget-tree
-/// assumptions and can abort the process on pointer input. Use the supported
-/// top-level webview window there instead.
+/// assumptions and can abort the process on pointer input. Linux therefore uses
+/// the supported top-level course window. It starts without an initialization
+/// script so authentication remains compatible, then enhances trusted Academy
+/// documents after they finish loading.
 #[cfg(target_os = "linux")]
 #[tauri::command]
 pub async fn show_web_view<R: Runtime>(
@@ -455,10 +457,12 @@ fn show_course_window<R: Runtime>(
             .map_err(|error| error.to_string())?
             .join(ACADEMY_DATA_DIR),
     );
-    // Authentication providers can reject or malfunction in a Linux embedded
-    // browser when any document-start script is present. The Linux compatibility
-    // window must remain a plain WebKitGTK view; native Academy enhancements stay
-    // enabled for the supported Windows/macOS window path.
+    // Authentication providers can reject or malfunction in WebKitGTK when any
+    // document-start script is present. Linux therefore starts with a plain page
+    // and evaluates the enhancement script after trusted Academy loads finish.
+    // eval reaches only the top frame: cross-origin player iframes have no media
+    // relay, so timestamp capture/restore is limited to top/same-origin players.
+    // Windows/macOS retain all-frame document-start injection.
     #[cfg(not(target_os = "linux"))]
     let builder = builder.initialization_script_for_all_frames(init_script("window", None, theme));
     builder.build().map(|_| ()).map_err(|e| e.to_string())
