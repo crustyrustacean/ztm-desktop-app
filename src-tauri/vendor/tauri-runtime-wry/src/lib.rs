@@ -4679,24 +4679,53 @@ enum WebviewKind {
 }
 
 #[cfg(target_os = "linux")]
-const WEBVIEW_FIXED_NAME: &str = "tauri-webview-fixed";
+const WEBVIEW_OVERLAY_NAME: &str = "tauri-webview-overlay";
+
+#[cfg(target_os = "linux")]
+const WEBVIEW_LAYER_NAME: &str = "tauri-webview-layer";
+
+#[cfg(target_os = "linux")]
+fn webview_overlay(window: &Window) -> (gtk::Overlay, gtk::Fixed) {
+  let vbox = window.default_vbox().unwrap();
+  let overlay = vbox
+    .children()
+    .into_iter()
+    .find_map(|child| {
+      (child.widget_name() == WEBVIEW_OVERLAY_NAME)
+        .then(|| child.downcast::<gtk::Overlay>().ok())
+        .flatten()
+    })
+    .unwrap_or_else(|| {
+      let overlay = gtk::Overlay::new();
+      overlay.set_widget_name(WEBVIEW_OVERLAY_NAME);
+      vbox.pack_start(&overlay, true, true, 0);
+      overlay.show();
+      overlay
+    });
+
+  let layer = overlay
+    .children()
+    .into_iter()
+    .find_map(|child| {
+      (child.widget_name() == WEBVIEW_LAYER_NAME)
+        .then(|| child.downcast::<gtk::Fixed>().ok())
+        .flatten()
+    })
+    .unwrap_or_else(|| {
+      let layer = gtk::Fixed::new();
+      layer.set_widget_name(WEBVIEW_LAYER_NAME);
+      overlay.add_overlay(&layer);
+      overlay.set_overlay_pass_through(&layer, true);
+      layer.show();
+      layer
+    });
+
+  (overlay, layer)
+}
 
 #[cfg(target_os = "linux")]
 fn webview_fixed(window: &Window) -> gtk::Fixed {
-  let vbox = window.default_vbox().unwrap();
-  if let Some(fixed) = vbox.children().into_iter().find_map(|child| {
-    (child.widget_name() == WEBVIEW_FIXED_NAME)
-      .then(|| child.downcast::<gtk::Fixed>().ok())
-      .flatten()
-  }) {
-    return fixed;
-  }
-
-  let fixed = gtk::Fixed::new();
-  fixed.set_widget_name(WEBVIEW_FIXED_NAME);
-  vbox.pack_start(&fixed, true, true, 0);
-  fixed.show();
-  fixed
+  webview_overlay(window).1
 }
 
 #[cfg(target_os = "linux")]
