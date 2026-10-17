@@ -18,6 +18,9 @@ use http::Request;
 use objc2::ClassType;
 use raw_window_handle::{DisplayHandle, HasDisplayHandle, HasWindowHandle};
 
+#[cfg(target_os = "linux")]
+use gtk::prelude::*;
+
 #[cfg(windows)]
 use tauri_runtime::webview::ScrollBarStyle;
 use tauri_runtime::{
@@ -4658,6 +4661,27 @@ enum WebviewKind {
   WindowChild,
 }
 
+#[cfg(target_os = "linux")]
+const WEBVIEW_FIXED_NAME: &str = "tauri-webview-fixed";
+
+#[cfg(target_os = "linux")]
+fn webview_fixed(window: &Window) -> gtk::Fixed {
+  let vbox = window.default_vbox().unwrap();
+  if let Some(fixed) = vbox.children().into_iter().find_map(|child| {
+    (child.widget_name() == WEBVIEW_FIXED_NAME)
+      .then(|| child.downcast::<gtk::Fixed>().ok())
+      .flatten()
+  }) {
+    return fixed;
+  }
+
+  let fixed = gtk::Fixed::new();
+  fixed.set_widget_name(WEBVIEW_FIXED_NAME);
+  vbox.pack_start(&fixed, true, true, 0);
+  fixed.show();
+  fixed
+}
+
 #[derive(Debug, Clone)]
 struct WebviewBounds {
   x_rate: f32,
@@ -5162,11 +5186,17 @@ You may have it installed on another user account, but it is not available for t
   }
 
   let webview = match kind {
+    #[cfg(target_os = "linux")]
+    WebviewKind::WindowChild => {
+      let fixed = webview_fixed(window);
+      webview_builder.build_gtk(&fixed)
+    }
     #[cfg(not(any(
       target_os = "windows",
       target_os = "macos",
       target_os = "ios",
-      target_os = "android"
+      target_os = "android",
+      target_os = "linux"
     )))]
     WebviewKind::WindowChild => {
       // only way to account for menu bar height, and also works for multiwebviews :)
@@ -5188,11 +5218,17 @@ You may have it installed on another user account, but it is not available for t
         target_os = "android"
       ))]
       let builder = webview_builder.build(&window);
+      #[cfg(target_os = "linux")]
+      let builder = {
+        let fixed = webview_fixed(window);
+        webview_builder.build_gtk(&fixed)
+      };
       #[cfg(not(any(
         target_os = "windows",
         target_os = "macos",
         target_os = "ios",
-        target_os = "android"
+        target_os = "android",
+        target_os = "linux"
       )))]
       let builder = {
         let vbox = window.default_vbox().unwrap();
