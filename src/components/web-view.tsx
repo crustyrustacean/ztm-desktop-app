@@ -82,6 +82,7 @@ export function WebView({
   const sidebarTooltipOpenRef = useRef(sidebarTooltipOpen);
   sidebarTooltipOpenRef.current = sidebarTooltipOpen;
   const loadedRequestId = useRef<number | null>(null);
+  const mountGeneration = useRef(0);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -93,17 +94,23 @@ export function WebView({
       });
 
     const initial = requestRef.current;
-    const url = initial?.url;
-    if (initial) loadedRequestId.current = initial.id;
+    const alreadyLoaded =
+      initial !== null && initial.id === loadedRequestId.current;
+    if (initial && !alreadyLoaded) loadedRequestId.current = initial.id;
     setOpenError(false);
     enqueue(
       "show_web_view",
-      {
-        bounds: boundsOf(container, sidebarTooltipOpenRef.current),
-        url,
-        session: initial?.session,
-        authCheck,
-      },
+      alreadyLoaded
+        ? {
+            bounds: boundsOf(container, sidebarTooltipOpenRef.current),
+            authCheck,
+          }
+        : {
+            bounds: boundsOf(container, sidebarTooltipOpenRef.current),
+            url: initial?.url,
+            session: initial?.session,
+            authCheck,
+          },
       () => setOpenError(true),
     );
 
@@ -115,10 +122,23 @@ export function WebView({
     return () => {
       observer.disconnect();
       window.removeEventListener("resize", sync);
-      loadedRequestId.current = null;
-      enqueue("dispose_web_view");
+      enqueue("hide_web_view");
     };
   }, [active]);
+
+  useEffect(() => {
+    const generation = ++mountGeneration.current;
+    return () => {
+      // Strict Mode probes effects with a setup/cleanup/setup cycle. Deferring
+      // lets the replacement setup cancel that probe without masking a real
+      // component unmount.
+      queueMicrotask(() => {
+        if (mountGeneration.current === generation && isTauri()) {
+          enqueue("dispose_web_view");
+        }
+      });
+    };
+  }, []);
 
   useEffect(() => {
     const container = containerRef.current;
