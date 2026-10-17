@@ -20,6 +20,7 @@ pub fn run() {
             app_state::save_state,
             web_view::show_web_view,
             web_view::set_web_view_bounds,
+            web_view::hide_web_view,
             web_view::dispose_web_view,
             web_view::open_course_window,
             web_view::web_view_fullscreen,

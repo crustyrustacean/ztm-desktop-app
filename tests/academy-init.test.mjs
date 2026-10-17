@@ -14,9 +14,9 @@ const defaultCapability = JSON.parse(
   ),
 );
 
-test("the app shell is permitted to dispose its native child webview", () => {
+test("the app shell is permitted to hide and dispose its native child webview", () => {
   assert.ok(defaultCapability.permissions.includes("allow-dispose-web-view"));
-  assert.ok(!defaultCapability.permissions.includes("allow-hide-web-view"));
+  assert.ok(defaultCapability.permissions.includes("allow-hide-web-view"));
 });
 
 function runAcademyScript(
