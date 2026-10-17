@@ -22,6 +22,9 @@ export function AppSidebar({
   onViewChange,
   onTooltipOpenChange,
 }: AppSidebarProps) {
+  const handleTooltipOpenChange = (tooltip: string) => (open: boolean) =>
+    onTooltipOpenChange?.(tooltip, open);
+
   return (
     <Sidebar collapsible="icon">
       <SidebarContent>
@@ -33,9 +36,7 @@ export function AppSidebar({
                 isActive={view === "dashboard"}
                 aria-current={view === "dashboard" ? "page" : undefined}
                 tooltip="Dashboard"
-                onTooltipOpenChange={(open) =>
-                  onTooltipOpenChange?.("dashboard", open)
-                }
+                onTooltipOpenChange={handleTooltipOpenChange("dashboard")}
               >
                 <LayoutDashboard />
                 <span>Dashboard</span>
@@ -47,9 +48,7 @@ export function AppSidebar({
                 isActive={view === "favourites"}
                 aria-current={view === "favourites" ? "page" : undefined}
                 tooltip="Favourites"
-                onTooltipOpenChange={(open) =>
-                  onTooltipOpenChange?.("favourites", open)
-                }
+                onTooltipOpenChange={handleTooltipOpenChange("favourites")}
               >
                 <Star />
                 <span>Favourites</span>
@@ -61,9 +60,7 @@ export function AppSidebar({
                 isActive={view === "web-view"}
                 aria-current={view === "web-view" ? "page" : undefined}
                 tooltip="Web View"
-                onTooltipOpenChange={(open) =>
-                  onTooltipOpenChange?.("web-view", open)
-                }
+                onTooltipOpenChange={handleTooltipOpenChange("web-view")}
               >
                 <Globe />
                 <span>Web View</span>
@@ -75,9 +72,7 @@ export function AppSidebar({
                 isActive={view === "options"}
                 aria-current={view === "options" ? "page" : undefined}
                 tooltip="Options"
-                onTooltipOpenChange={(open) =>
-                  onTooltipOpenChange?.("options", open)
-                }
+                onTooltipOpenChange={handleTooltipOpenChange("options")}
               >
                 <Settings />
                 <span>Options</span>
@@ -87,9 +82,7 @@ export function AppSidebar({
               <SidebarMenuButton
                 onClick={openDiscord}
                 tooltip="Discord"
-                onTooltipOpenChange={(open) =>
-                  onTooltipOpenChange?.("discord", open)
-                }
+                onTooltipOpenChange={handleTooltipOpenChange("discord")}
               >
                 <SiDiscord />
                 <span>Discord</span>

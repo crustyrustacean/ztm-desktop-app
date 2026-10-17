@@ -7,7 +7,7 @@ type Bounds = { x: number; y: number; width: number; height: number };
 // temporary gutter so collapsed-sidebar tooltips can be seen beside the rail.
 const SIDEBAR_TOOLTIP_GUTTER = 112;
 
-/** A page to load in the web view. `id` changes on every request, even for the same URL. */
+/** Mirrors `PageSession` in src-tauri/src/web_view.rs. */
 export type WebViewSession = {
   url: string;
   scrollX: number;

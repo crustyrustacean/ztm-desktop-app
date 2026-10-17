@@ -40,7 +40,7 @@ const THEME_STORAGE_KEY: &str = "ztm-desktop-app-theme";
 
 fn init_script(view: &str, session: Option<&PageSession>, theme: WebTheme) -> String {
     let session = serde_json::to_string(&session).expect("page session serializes");
-    let theme = theme.script();
+    let theme = theme.as_str();
     format!(
         "window.__ZTM_DESKTOP_VIEW__ = {view:?};\n\
          window.__ZTM_DESKTOP_THEME__ = {theme:?};\n\
@@ -72,7 +72,7 @@ impl WebTheme {
         }
     }
 
-    fn script(self) -> &'static str {
+    fn as_str(self) -> &'static str {
         match self {
             Self::Light => "light",
             Self::Dark => "dark",
@@ -81,7 +81,7 @@ impl WebTheme {
 }
 
 fn theme_update_script(theme: WebTheme, reset: bool) -> String {
-    let theme = theme.script();
+    let theme = theme.as_str();
     let reload = if reset {
         "window.location.reload();"
     } else {
