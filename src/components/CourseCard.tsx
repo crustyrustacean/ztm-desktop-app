@@ -27,10 +27,12 @@ function CourseCard({
 
   return (
     <Card
+      aria-disabled={!onOpen}
       className={cn(
         "relative h-full pt-0",
         onOpen &&
           "transition-shadow has-[[data-open-course]:focus-visible]:ring-3 has-[[data-open-course]:focus-visible]:ring-ring/50 has-[[data-open-course]:hover]:shadow-md",
+        !onOpen && "cursor-not-allowed opacity-60",
       )}
     >
       {showImage ? (
@@ -61,6 +63,7 @@ function CourseCard({
             : `Add ${name} to favourites`
         }
         onClick={onToggleFavourite}
+        disabled={!onOpen}
       >
         <Star className={cn(favourite && "fill-current text-yellow-500")} />
       </Button>
@@ -79,7 +82,12 @@ function CourseCard({
                 {name}
               </button>
             ) : (
-              name
+              <span>
+                {name}
+                <span className="mt-1 block text-xs font-normal text-muted-foreground">
+                  Coming soon
+                </span>
+              </span>
             )}
           </h3>
         </CardTitle>

@@ -62,6 +62,13 @@ test.beforeEach(async ({ page }) => {
                 publicUrl:
                   "https://academy.zerotomastery.io/p/test-course",
               },
+              {
+                uuid: "coming-soon-course",
+                name: "Coming Soon Course",
+                imageUrl: null,
+                enrolledUrl: null,
+                publicUrl: null,
+              },
             ];
           }
           if (command === "sync_courses") return null;
@@ -307,6 +314,46 @@ test("opening a course in Web View collapses the app sidebar", async ({
       ),
     )
     .toBeTruthy();
+});
+
+test("a course without a URL is visibly disabled and skipped by keyboard navigation", async ({
+  page,
+}) => {
+  const card = page.locator('[data-slot="card"]', {
+    has: page.getByRole("heading", { name: "Coming Soon Course" }),
+  });
+
+  await expect(card).toHaveAttribute("aria-disabled", "true");
+  await expect(card.getByText("Coming soon", { exact: true })).toBeVisible();
+
+  const showCallsBefore = await page.evaluate(
+    () =>
+      (globalThis as typeof globalThis & { __TAURI_CALLS__: InvokeCall[] })
+        .__TAURI_CALLS__.filter((call) => call.command === "show_web_view")
+        .length,
+  );
+  await card.click();
+  await expect(page.getByTestId("web-view-slot")).toBeHidden();
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () =>
+          (
+            globalThis as typeof globalThis & {
+              __TAURI_CALLS__: InvokeCall[];
+            }
+          ).__TAURI_CALLS__.filter(
+            (call) => call.command === "show_web_view",
+          ).length,
+      ),
+    )
+    .toBe(showCallsBefore);
+
+  await page
+    .getByRole("button", { name: "Test Course", exact: true })
+    .focus();
+  await page.keyboard.press("Tab");
+  await expect(card.locator(":focus")).toHaveCount(0);
 });
 
 test("collapsed sidebar tooltips temporarily clear the native webview", async ({
