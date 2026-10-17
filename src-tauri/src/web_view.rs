@@ -782,8 +782,10 @@ pub fn set_web_view_theme<R: Runtime>(
 
 fn place<R: Runtime>(webview: &Webview<R>, bounds: Bounds) -> Result<(), String> {
     webview
-        .set_position(LogicalPosition::new(bounds.x, bounds.y))
-        .and_then(|_| webview.set_size(LogicalSize::new(bounds.width, bounds.height)))
+        .set_bounds(tauri::Rect {
+            position: LogicalPosition::new(bounds.x, bounds.y).into(),
+            size: LogicalSize::new(bounds.width, bounds.height).into(),
+        })
         .map_err(|e| e.to_string())
 }
 
