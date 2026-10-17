@@ -135,6 +135,10 @@ fn set_webview_native_theme<R: Runtime>(
 #[derive(Default)]
 pub struct WebViewTheme(Mutex<WebTheme>);
 
+#[cfg(target_os = "linux")]
+#[derive(Default)]
+pub struct PendingCourseSession(Mutex<Option<PageSession>>);
+
 fn destroy_fullscreen<R: Runtime>(app: &tauri::AppHandle<R>) -> Result<(), String> {
     if let Some(window) = app.get_webview_window(FULLSCREEN_WINDOW_LABEL) {
         window.destroy().map_err(|e| e.to_string())?;
@@ -242,8 +246,24 @@ fn is_authenticated_academy_url(url: &Url) -> bool {
     })
 }
 
+#[cfg(any(target_os = "linux", test))]
 fn should_enhance_page(url: &Url) -> bool {
     course_url(url.as_str()).is_ok() && is_authenticated_academy_url(url)
+}
+
+#[cfg(any(target_os = "linux", test))]
+fn page_enhancement_script(
+    event: PageLoadEvent,
+    url: &Url,
+    session: &mut Option<PageSession>,
+    theme: WebTheme,
+) -> Option<String> {
+    if event != PageLoadEvent::Finished || !should_enhance_page(url) {
+        return None;
+    }
+    let script = init_script("window", session.as_ref(), theme);
+    session.take();
+    Some(script)
 }
 
 fn report_authentication<R: Runtime>(app: &tauri::AppHandle<R>, event: PageLoadEvent, url: &Url) {
@@ -321,10 +341,10 @@ pub async fn show_web_view<R: Runtime>(
     auth_check: bool,
     theme: State<'_, WebViewTheme>,
 ) -> Result<(), String> {
-    let _ = (bounds, session);
+    let _ = bounds;
     let url = course_url(url.as_deref().unwrap_or(LOGIN_URL))?;
     let theme = *theme.0.lock().map_err(|e| e.to_string())?;
-    show_course_window(window.app_handle(), url, theme, auth_check)
+    show_course_window(window.app_handle(), url, session, theme, auth_check)
 }
 
 #[tauri::command]
@@ -356,15 +376,26 @@ pub async fn open_course_window<R: Runtime>(
     destroy_fullscreen(&app)?;
     let url = course_url(&url)?;
     let theme = *theme.0.lock().map_err(|e| e.to_string())?;
-    show_course_window(&app, url, theme, false)
+    show_course_window(&app, url, None, theme, false)
 }
 
 fn show_course_window<R: Runtime>(
     app: &tauri::AppHandle<R>,
     url: Url,
+    session: Option<PageSession>,
     theme: WebTheme,
     close_on_authentication: bool,
 ) -> Result<(), String> {
+    #[cfg(target_os = "linux")]
+    {
+        *app.state::<PendingCourseSession>()
+            .0
+            .lock()
+            .map_err(|e| e.to_string())? = session;
+    }
+    #[cfg(not(target_os = "linux"))]
+    let _ = session;
+
     if let Some(window) = app.get_webview_window(COURSE_WINDOW_LABEL) {
         window.navigate(url).map_err(|e| e.to_string())?;
         // Best effort: bringing the window forward should not fail the navigation.
@@ -374,12 +405,37 @@ fn show_course_window<R: Runtime>(
         return Ok(());
     }
     let authentication_app = app.clone();
+    #[cfg(target_os = "linux")]
+    let enhancement_app = app.clone();
     let builder = WebviewWindowBuilder::new(app, COURSE_WINDOW_LABEL, WebviewUrl::External(url))
         .title("ZTM Academy")
         .inner_size(1280.0, 800.0)
         .min_inner_size(480.0, 360.0)
         .theme(Some(theme.tauri()))
         .on_page_load(move |window, payload| {
+            #[cfg(target_os = "linux")]
+            if payload.event() == PageLoadEvent::Finished && should_enhance_page(payload.url()) {
+                let result = (|| {
+                    let theme = *enhancement_app
+                        .state::<WebViewTheme>()
+                        .0
+                        .lock()
+                        .map_err(|error| error.to_string())?;
+                    let script = {
+                        let pending = enhancement_app.state::<PendingCourseSession>();
+                        let mut session = pending.0.lock().map_err(|error| error.to_string())?;
+                        page_enhancement_script(payload.event(), payload.url(), &mut session, theme)
+                    };
+                    if let Some(script) = script {
+                        window.eval(script).map_err(|error| error.to_string())?;
+                    }
+                    Ok::<_, String>(())
+                })();
+                if let Err(error) = result {
+                    eprintln!("failed to enhance Linux Academy page: {error}");
+                }
+            }
+
             let authenticated = payload.event() == PageLoadEvent::Finished
                 && is_authenticated_academy_url(payload.url());
             if close_on_authentication {
@@ -654,8 +710,10 @@ mod tests {
     use super::{
         AUTHENTICATION_ROUTES, FullscreenWindowLifecycle, INIT_SCRIPT, PageSession,
         THEME_STORAGE_KEY, WebTheme, course_url, init_script, is_academy_exit_navigation,
-        is_authenticated_academy_url, should_enhance_page, theme_update_script,
+        is_authenticated_academy_url, page_enhancement_script, should_enhance_page,
+        theme_update_script,
     };
+    use tauri::{Url, webview::PageLoadEvent};
 
     #[test]
     fn academy_script_uses_rust_owned_auth_routes_and_theme_key() {
@@ -766,6 +824,53 @@ mod tests {
         ] {
             assert!(!should_enhance_page(&url.parse().unwrap()), "{url}");
         }
+    }
+
+    #[test]
+    fn enhancement_script_waits_for_an_eligible_finished_load_and_consumes_session_once() {
+        let course: Url = "https://academy.zerotomastery.io/courses/enrolled/697434"
+            .parse()
+            .unwrap();
+        let auth = "https://academy.zerotomastery.io/users/sign_in"
+            .parse()
+            .unwrap();
+        let mut session = Some(PageSession::at_url(course.clone()));
+
+        assert!(
+            page_enhancement_script(
+                PageLoadEvent::Started,
+                &course,
+                &mut session,
+                WebTheme::Dark
+            )
+            .is_none()
+        );
+        assert!(
+            page_enhancement_script(PageLoadEvent::Finished, &auth, &mut session, WebTheme::Dark)
+                .is_none()
+        );
+        assert!(session.is_some());
+
+        let first = page_enhancement_script(
+            PageLoadEvent::Finished,
+            &course,
+            &mut session,
+            WebTheme::Dark,
+        )
+        .unwrap();
+        assert!(first.contains("window.__ZTM_DESKTOP_THEME__ = \"dark\""));
+        assert!(first.contains(course.as_str()));
+        assert!(session.is_none());
+
+        let later = page_enhancement_script(
+            PageLoadEvent::Finished,
+            &course,
+            &mut session,
+            WebTheme::Light,
+        )
+        .unwrap();
+        assert!(later.contains("window.__ZTM_DESKTOP_THEME__ = \"light\""));
+        assert!(later.contains("window.__ZTM_DESKTOP_RESTORE__ = null"));
     }
 
     #[test]

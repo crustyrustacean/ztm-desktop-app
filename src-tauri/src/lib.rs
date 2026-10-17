@@ -4,11 +4,14 @@ mod web_view;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    tauri::Builder::default()
+    let builder = tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .manage(web_view::FullscreenWindows::default())
         .manage(web_view::PromotionState::default())
-        .manage(web_view::WebViewTheme::default())
+        .manage(web_view::WebViewTheme::default());
+    #[cfg(target_os = "linux")]
+    let builder = builder.manage(web_view::PendingCourseSession::default());
+    builder
         .on_window_event(web_view::handle_window_event)
         .invoke_handler(tauri::generate_handler![
             academy::load_courses,
