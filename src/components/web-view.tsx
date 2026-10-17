@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { invoke, isTauri } from "@tauri-apps/api/core";
 
 type Bounds = { x: number; y: number; width: number; height: number };
@@ -47,10 +47,14 @@ function enqueue(
     session?: WebViewSession;
     authCheck?: boolean;
   },
+  onError?: (error: unknown) => void,
 ) {
   pending = pending
     .then(() => invoke(command, args))
-    .catch((error) => console.error(`${command} failed`, error));
+    .catch((error) => {
+      console.error(`${command} failed`, error);
+      onError?.(error);
+    });
 }
 
 type WebViewProps = {
@@ -70,6 +74,7 @@ export function WebView({
   authCheck = false,
 }: WebViewProps) {
   const containerRef = useRef<HTMLDivElement>(null);
+  const [openError, setOpenError] = useState(false);
   // Read when the web view is shown so opening a course doesn't create it twice.
   const requestRef = useRef(request);
   requestRef.current = request;
@@ -89,12 +94,17 @@ export function WebView({
     const initial = requestRef.current;
     const url = initial?.url;
     if (initial) loadedRequestId.current = initial.id;
-    enqueue("show_web_view", {
-      bounds: boundsOf(container, sidebarTooltipOpenRef.current),
-      url,
-      session: initial?.session,
-      authCheck,
-    });
+    setOpenError(false);
+    enqueue(
+      "show_web_view",
+      {
+        bounds: boundsOf(container, sidebarTooltipOpenRef.current),
+        url,
+        session: initial?.session,
+        authCheck,
+      },
+      () => setOpenError(true),
+    );
 
     // Covers sidebar collapse as well as window resizes.
     const observer = new ResizeObserver(sync);
@@ -123,12 +133,17 @@ export function WebView({
     if (!active || !request || !container || !isTauri()) return;
     if (request.id === loadedRequestId.current) return;
     loadedRequestId.current = request.id;
-    enqueue("show_web_view", {
-      bounds: boundsOf(container, sidebarTooltipOpenRef.current),
-      url: request.url,
-      session: request.session,
-      authCheck,
-    });
+    setOpenError(false);
+    enqueue(
+      "show_web_view",
+      {
+        bounds: boundsOf(container, sidebarTooltipOpenRef.current),
+        url: request.url,
+        session: request.session,
+        authCheck,
+      },
+      () => setOpenError(true),
+    );
   }, [active, request]);
 
   if (!isTauri()) {
@@ -145,6 +160,15 @@ export function WebView({
       ref={containerRef}
       data-testid="web-view-slot"
       className="h-[calc(100svh-3.5rem)] w-full"
-    />
+    >
+      {openError && (
+        <p
+          role="alert"
+          className="m-4 rounded-md border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive"
+        >
+          Could not open the Web View.
+        </p>
+      )}
+    </div>
   );
 }

@@ -31,11 +31,15 @@ test.beforeEach(async ({ page }) => {
     const callbacks = new Map<number, (payload: unknown) => void>();
     const eventHandlers = new Map<string, (payload: unknown) => void>();
     const calls: InvokeCall[] = [];
+    const rejectedCommands = new Set<string>();
     let callbackId = 0;
 
     Object.assign(globalThis, {
       isTauri: true,
       __TAURI_CALLS__: calls,
+      __rejectTauriCommand(command: string) {
+        rejectedCommands.add(command);
+      },
       __emitTauriEvent(event: string, payload: unknown = null) {
         eventHandlers.get(event)?.({ event, id: 1, payload });
       },
@@ -50,6 +54,9 @@ test.beforeEach(async ({ page }) => {
         },
         async invoke(command: string, args: Record<string, unknown> = {}) {
           calls.push({ command, args });
+          if (rejectedCommands.has(command)) {
+            throw new Error(`${command} rejected for test`);
+          }
           if (command === "load_state") return {};
           if (command === "load_courses") {
             return [
@@ -274,6 +281,24 @@ test("embedded webview bounds stay below the header and beside the sidebar", asy
   expect(geometry.slot.top).toBeGreaterThanOrEqual(geometry.header.bottom);
   expect(geometry.slot.right).toBeLessThanOrEqual(geometry.viewport.width);
   expect(geometry.slot.bottom).toBeLessThanOrEqual(geometry.viewport.height);
+});
+
+test("a failed webview open is reported in the Web View area", async ({
+  page,
+}) => {
+  await page.evaluate(() =>
+    (
+      globalThis as typeof globalThis & {
+        __rejectTauriCommand: (command: string) => void;
+      }
+    ).__rejectTauriCommand("show_web_view"),
+  );
+
+  await page.getByRole("button", { name: "Web View" }).click();
+
+  await expect(
+    page.getByRole("alert").getByText("Could not open the Web View."),
+  ).toBeVisible();
 });
 
 test("entering Web View from the sidebar collapses the app sidebar", async ({
