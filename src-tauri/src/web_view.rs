@@ -433,6 +433,15 @@ pub async fn set_web_view_bounds<R: Runtime>(
 }
 
 #[tauri::command]
+pub async fn hide_web_view<R: Runtime>(window: Window<R>) -> Result<(), String> {
+    if let Some(webview) = window.get_webview(LABEL) {
+        let _ = webview.eval("window.__ZTM_DESKTOP_PAUSE__?.();");
+        webview.hide().map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
+#[tauri::command]
 pub async fn dispose_web_view<R: Runtime>(window: Window<R>) -> Result<(), String> {
     if let Some(webview) = window.get_webview(LABEL) {
         webview.close().map_err(|e| e.to_string())?;

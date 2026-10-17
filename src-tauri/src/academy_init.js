@@ -6,6 +6,7 @@
   const MEDIA_READY_MESSAGE = "ztm-desktop-media-ready";
   const MEDIA_RESTORE_MESSAGE = "ztm-desktop-media-restore";
   const MEDIA_CAPTURE_MESSAGE = "ztm-desktop-media-capture";
+  const MEDIA_PAUSE_MESSAGE = "ztm-desktop-media-pause";
   const MEDIA_EVENTS = ["timeupdate", "ratechange", "play", "pause", "ended"];
 
   function applyMediaSession(media, session) {
@@ -28,6 +29,12 @@
         media.addEventListener(event, () => onMediaEvent(media));
       }
       applyMediaSession(media, session);
+    }
+  }
+
+  function pausePlayingMedia() {
+    for (const media of document.querySelectorAll("video, audio")) {
+      if (!media.paused) media.pause();
     }
   }
 
@@ -94,6 +101,11 @@
 
     window.addEventListener("message", (event) => {
       if (event.source !== window.top) return;
+      if (event.data?.type === MEDIA_PAUSE_MESSAGE) {
+        wireFrameMedia();
+        pausePlayingMedia();
+        return;
+      }
       if (event.data?.type === MEDIA_CAPTURE_MESSAGE) {
         wireFrameMedia();
         const media = activeMedia || document.querySelector("video, audio");
@@ -114,6 +126,13 @@
   }
   const isAcademyHost = /(^|\.)zerotomastery\.io$/.test(location.hostname);
   if (!isAcademyHost) return;
+
+  window.__ZTM_DESKTOP_PAUSE__ = () => {
+    pausePlayingMedia();
+    for (const frame of document.querySelectorAll("iframe")) {
+      frame.contentWindow?.postMessage({ type: MEDIA_PAUSE_MESSAGE }, "*");
+    }
+  };
 
   const SITE_NAVIGATION = ".ztm-sidebar, .ztm-sidebar-links";
   const LESSON_NAV = 'div.nav:has(a[href="/"] img[alt="school logo"])';

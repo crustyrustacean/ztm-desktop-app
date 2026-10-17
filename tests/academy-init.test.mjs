@@ -14,9 +14,9 @@ const defaultCapability = JSON.parse(
   ),
 );
 
-test("the app shell is permitted to dispose its native child webview", () => {
+test("the app shell is permitted to hide and dispose its native child webview", () => {
   assert.ok(defaultCapability.permissions.includes("allow-dispose-web-view"));
-  assert.ok(!defaultCapability.permissions.includes("allow-hide-web-view"));
+  assert.ok(defaultCapability.permissions.includes("allow-hide-web-view"));
 });
 
 function runAcademyScript(
@@ -30,6 +30,8 @@ function runAcademyScript(
   storageEntries = [],
   mediaElements = [],
   pageUrl = "https://academy.zerotomastery.io/courses/enrolled/697434",
+  frames = [],
+  topWindow = null,
 ) {
   const documentListeners = new Map();
   const windowListeners = new Map();
@@ -64,7 +66,7 @@ function runAcademyScript(
         return siteNavigation;
       }
       if (selector === "video, audio") return mediaElements;
-      if (selector === "iframe") return [];
+      if (selector === "iframe") return frames;
       return selector.startsWith("img[") ? lessonLogos : courseBackLinks;
     },
     addEventListener: (name, listener) => {
@@ -94,7 +96,7 @@ function runAcademyScript(
       windowListeners.set(name, listener);
     },
   };
-  window.top = window;
+  window.top = topWindow ?? window;
   const initialUrl = new URL(pageUrl);
   const location = {
     hostname: initialUrl.hostname,
@@ -560,4 +562,90 @@ test("native Academy webviews initialize the progress relay in every frame", () 
     rust.match(/initialization_script_for_all_frames/g)?.length,
     3,
   );
+});
+
+test("the desktop pause hook pauses top-frame media and notifies frames", () => {
+  let pauses = 0;
+  const messages = [];
+  const media = {
+    currentTime: 12,
+    paused: false,
+    playbackRate: 1,
+    readyState: 1,
+    addEventListener() {},
+    pause() {
+      pauses += 1;
+      this.paused = true;
+    },
+  };
+  const frame = {
+    contentWindow: {
+      postMessage: (message) => messages.push(message),
+    },
+  };
+  const runtime = runAcademyScript(
+    "embedded",
+    null,
+    [],
+    true,
+    [],
+    "dark",
+    [],
+    [],
+    [media],
+    "https://academy.zerotomastery.io/courses/enrolled/697434",
+    [frame],
+  );
+
+  runtime.window.__ZTM_DESKTOP_PAUSE__();
+  runtime.window.__ZTM_DESKTOP_PAUSE__();
+
+  assert.equal(media.paused, true);
+  assert.equal(pauses, 1);
+  assert.deepEqual(JSON.parse(JSON.stringify(messages)), [
+    { type: "ztm-desktop-media-pause" },
+    { type: "ztm-desktop-media-pause" },
+  ]);
+});
+
+test("player frames pause playing media on the desktop pause message", () => {
+  let pauses = 0;
+  const media = {
+    currentTime: 34,
+    paused: false,
+    playbackRate: 1,
+    readyState: 1,
+    addEventListener() {},
+    pause() {
+      pauses += 1;
+      this.paused = true;
+    },
+  };
+  const topWindow = { postMessage() {} };
+  const runtime = runAcademyScript(
+    "embedded",
+    null,
+    [],
+    true,
+    [],
+    "dark",
+    [],
+    [],
+    [media],
+    "https://player.example/video",
+    [],
+    topWindow,
+  );
+
+  runtime.windowListeners.get("message")({
+    source: topWindow,
+    data: { type: "ztm-desktop-media-pause" },
+  });
+  runtime.windowListeners.get("message")({
+    source: topWindow,
+    data: { type: "ztm-desktop-media-pause" },
+  });
+
+  assert.equal(media.paused, true);
+  assert.equal(pauses, 1);
 });

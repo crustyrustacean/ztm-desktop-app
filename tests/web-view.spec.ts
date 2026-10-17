@@ -86,6 +86,15 @@ test.beforeEach(async ({ page }) => {
                 enrolledUrl: null,
                 publicUrl: null,
               },
+              {
+                uuid: "second-course",
+                name: "Second Course",
+                imageUrl: null,
+                enrolledUrl:
+                  "https://academy.zerotomastery.io/courses/enrolled/second-course",
+                publicUrl:
+                  "https://academy.zerotomastery.io/p/second-course",
+              },
             ];
           }
           if (command === "sync_courses") return null;
@@ -517,10 +526,12 @@ test("collapsed sidebar tooltips temporarily clear the native webview", async ({
     .toBe(true);
 });
 
-test("switching from Web View to Dashboard disposes the native child", async ({
+test("switching views hides and resumes the live native child", async ({
   page,
 }) => {
-  await page.getByRole("button", { name: "Web View" }).click();
+  await page
+    .getByRole("button", { name: "Test Course", exact: true })
+    .click();
   await expect(page.getByTestId("web-view-slot")).toBeVisible();
 
   const callsBefore = await page.evaluate(
@@ -537,11 +548,142 @@ test("switching from Web View to Dashboard disposes the native child", async ({
         const calls = (
           globalThis as typeof globalThis & { __TAURI_CALLS__: InvokeCall[] }
         ).__TAURI_CALLS__.slice(start);
-        return calls.filter((call) => call.command === "dispose_web_view")
-          .length;
+        return {
+          hides: calls.filter((call) => call.command === "hide_web_view")
+            .length,
+          disposes: calls.filter(
+            (call) => call.command === "dispose_web_view",
+          ).length,
+        };
       }, callsBefore),
     )
-    .toBe(1);
+    .toEqual({ hides: 1, disposes: 0 });
+
+  const callsBeforeReturn = await page.evaluate(
+    () =>
+      (globalThis as typeof globalThis & { __TAURI_CALLS__: InvokeCall[] })
+        .__TAURI_CALLS__.length,
+  );
+  await page.getByRole("button", { name: "Web View" }).click();
+
+  await expect
+    .poll(() =>
+      page.evaluate((start) => {
+        const show = (
+          globalThis as typeof globalThis & { __TAURI_CALLS__: InvokeCall[] }
+        ).__TAURI_CALLS__.slice(start).find(
+          (call) => call.command === "show_web_view",
+        );
+        return Boolean(
+          show && !("url" in show.args) && !("session" in show.args),
+        );
+      }, callsBeforeReturn),
+    )
+    .toBe(true);
+});
+
+test("opening another course while hidden navigates to its URL", async ({
+  page,
+}) => {
+  await page
+    .getByRole("button", { name: "Test Course", exact: true })
+    .click();
+  await page.getByRole("button", { name: "Dashboard" }).click();
+
+  const callsBefore = await page.evaluate(
+    () =>
+      (globalThis as typeof globalThis & { __TAURI_CALLS__: InvokeCall[] })
+        .__TAURI_CALLS__.length,
+  );
+  await page
+    .getByRole("button", { name: "Second Course", exact: true })
+    .click();
+
+  await expect
+    .poll(() =>
+      page.evaluate((start) => {
+        const show = (
+          globalThis as typeof globalThis & { __TAURI_CALLS__: InvokeCall[] }
+        ).__TAURI_CALLS__.slice(start).find(
+          (call) => call.command === "show_web_view",
+        );
+        return show?.args.url;
+      }, callsBefore),
+    )
+    .toBe(
+      "https://academy.zerotomastery.io/courses/enrolled/second-course",
+    );
+});
+
+test("only a real Web View unmount disposes its native child", async ({
+  page,
+}) => {
+  const mountResult = await page.evaluate(async () => {
+    const load = new Function("path", "return import(path)") as (
+      path: string,
+    ) => Promise<Record<string, unknown>>;
+    const react = await load("/node_modules/.vite/deps/react.js");
+    const reactDom = await load(
+      "/node_modules/.vite/deps/react-dom_client.js",
+    );
+    const webViewModule = await load("/src/components/web-view.tsx");
+    const createElement = (react.createElement ??
+      (react.default as { createElement?: (...args: unknown[]) => unknown })
+        ?.createElement) as (...args: unknown[]) => unknown;
+    const StrictMode = (react.StrictMode ??
+      (react.default as { StrictMode?: unknown })?.StrictMode) as unknown;
+    const createRoot = (reactDom.createRoot ??
+      (reactDom.default as {
+        createRoot?: (element: Element) => {
+          render(node: unknown): void;
+          unmount(): void;
+        };
+      })?.createRoot) as (element: Element) => {
+      render(node: unknown): void;
+      unmount(): void;
+    };
+    const host = document.createElement("div");
+    document.body.append(host);
+    const root = createRoot(host);
+    const callsAtMount = (
+      globalThis as typeof globalThis & { __TAURI_CALLS__: InvokeCall[] }
+    ).__TAURI_CALLS__.length;
+    root.render(
+      createElement(
+        StrictMode,
+        null,
+        createElement(webViewModule.WebView, {
+          active: false,
+          request: null,
+        }),
+      ),
+    );
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    const calls = (
+      globalThis as typeof globalThis & { __TAURI_CALLS__: InvokeCall[] }
+    ).__TAURI_CALLS__;
+    const callCount = calls.length;
+    const disposesWhileMounted = calls
+      .slice(callsAtMount)
+      .filter((call) => call.command === "dispose_web_view").length;
+    root.unmount();
+    return { callCount, disposesWhileMounted };
+  });
+
+  expect(mountResult.disposesWhileMounted).toBe(0);
+  await expect
+    .poll(() =>
+      page.evaluate(
+        (start) =>
+          (
+            globalThis as typeof globalThis & {
+              __TAURI_CALLS__: InvokeCall[];
+            }
+          ).__TAURI_CALLS__.slice(start),
+        mountResult.callCount,
+      ),
+    )
+    .toContainEqual(expect.objectContaining({ command: "dispose_web_view" }));
 });
 
 test("promotion returns the shell to Dashboard and disposes its child", async ({
