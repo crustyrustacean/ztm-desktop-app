@@ -27,12 +27,11 @@ function CourseCard({
 
   return (
     <Card
-      aria-disabled={!onOpen}
       className={cn(
         "relative h-full pt-0",
         onOpen &&
           "transition-shadow has-[[data-open-course]:focus-visible]:ring-3 has-[[data-open-course]:focus-visible]:ring-ring/50 has-[[data-open-course]:hover]:shadow-md",
-        !onOpen && "cursor-not-allowed opacity-60",
+        !onOpen && "cursor-not-allowed",
       )}
     >
       {showImage ? (
@@ -40,13 +39,19 @@ function CourseCard({
           src={imageUrl}
           alt=""
           loading="lazy"
-          className="aspect-video w-full bg-muted object-cover"
+          className={cn(
+            "aspect-video w-full bg-muted object-cover",
+            !onOpen && "opacity-60",
+          )}
           onError={() => setFailedUrl(imageUrl)}
         />
       ) : (
         // Placeholder for courses without artwork or whose image failed to load.
         <div
-          className="flex aspect-video items-center justify-center bg-muted text-muted-foreground"
+          className={cn(
+            "flex aspect-video items-center justify-center bg-muted text-muted-foreground",
+            !onOpen && "opacity-60",
+          )}
           aria-hidden="true"
         >
           <GraduationCap className="size-10" strokeWidth={1.5} />
@@ -55,7 +60,7 @@ function CourseCard({
       <Button
         variant="ghost"
         size="icon"
-        className="absolute top-2 right-2 z-10 bg-background/80 hover:bg-background"
+        className="absolute top-2 right-2 z-10 cursor-pointer bg-background/80 hover:bg-background"
         aria-pressed={favourite}
         aria-label={
           favourite
@@ -63,11 +68,10 @@ function CourseCard({
             : `Add ${name} to favourites`
         }
         onClick={onToggleFavourite}
-        disabled={!onOpen}
       >
         <Star className={cn(favourite && "fill-current text-yellow-500")} />
       </Button>
-      <CardHeader>
+      <CardHeader className={cn(!onOpen && "opacity-60")}>
         <CardTitle className="break-words [overflow-wrap:anywhere]">
           <h3>
             {onOpen ? (
@@ -82,7 +86,7 @@ function CourseCard({
                 {name}
               </button>
             ) : (
-              <span>
+              <span data-open-course aria-disabled="true">
                 {name}
                 <span className="mt-1 block text-xs font-normal text-muted-foreground">
                   Coming soon

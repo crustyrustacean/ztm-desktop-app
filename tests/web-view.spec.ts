@@ -357,14 +357,17 @@ test("opening a course in Web View collapses the app sidebar", async ({
     .toBeTruthy();
 });
 
-test("a course without a URL is visibly disabled and skipped by keyboard navigation", async ({
+test("a course without a URL has no open action but keeps its favourite action", async ({
   page,
 }) => {
   const card = page.locator('[data-slot="card"]', {
     has: page.getByRole("heading", { name: "Coming Soon Course" }),
   });
 
-  await expect(card).toHaveAttribute("aria-disabled", "true");
+  await expect(card.locator("[data-open-course]")).toHaveAttribute(
+    "aria-disabled",
+    "true",
+  );
   await expect(card.getByText("Coming soon", { exact: true })).toBeVisible();
 
   const showCallsBefore = await page.evaluate(
@@ -394,7 +397,35 @@ test("a course without a URL is visibly disabled and skipped by keyboard navigat
     .getByRole("button", { name: "Test Course", exact: true })
     .focus();
   await page.keyboard.press("Tab");
-  await expect(card.locator(":focus")).toHaveCount(0);
+  await expect(
+    card.getByRole("button", {
+      name: "Add Coming Soon Course to favourites",
+    }),
+  ).toBeFocused();
+});
+
+test("a course without a URL can be favourited and removed from Favourites", async ({
+  page,
+}) => {
+  await page
+    .getByRole("button", { name: "Add Coming Soon Course to favourites" })
+    .click();
+  await page
+    .getByRole("button", { name: "Favourites", exact: true })
+    .click();
+
+  await expect(
+    page.getByRole("heading", { name: "Coming Soon Course" }),
+  ).toBeVisible();
+  await page
+    .getByRole("button", {
+      name: "Remove Coming Soon Course from favourites",
+    })
+    .click();
+
+  await expect(
+    page.getByText("No favourites yet. Star a course on the Dashboard to add it here."),
+  ).toBeVisible();
 });
 
 test("collapsed sidebar tooltips temporarily clear the native webview", async ({
