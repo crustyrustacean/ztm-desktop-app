@@ -149,6 +149,8 @@ test("the resolved system theme is synchronized to native Academy views", async 
   await page.reload();
 
   await expect(page.locator("html")).toHaveClass(/dark/);
+  await expect(page.locator("html")).toHaveClass(/scheme-dark/);
+  await expect(page.locator("html")).not.toHaveClass(/scheme-light/);
   await expect
     .poll(() =>
       page.evaluate(() =>
@@ -171,10 +173,13 @@ test("changing theme in Options requests an Academy webview reset", async ({
   await page.emulateMedia({ colorScheme: "light" });
   await page.reload();
   await authenticateAcademy(page);
+  await expect(page.locator("html")).toHaveClass(/scheme-light/);
   await page.getByRole("button", { name: "Options" }).click();
   await page.getByRole("switch", { name: "Dark mode" }).click();
 
   await expect(page.locator("html")).toHaveClass(/dark/);
+  await expect(page.locator("html")).toHaveClass(/scheme-dark/);
+  await expect(page.locator("html")).not.toHaveClass(/scheme-light/);
   await expect
     .poll(() =>
       page.evaluate(() =>
