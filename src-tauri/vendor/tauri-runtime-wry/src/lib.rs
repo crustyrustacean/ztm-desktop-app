@@ -4724,11 +4724,6 @@ fn webview_overlay(window: &Window) -> (gtk::Overlay, gtk::Fixed) {
 }
 
 #[cfg(target_os = "linux")]
-fn webview_fixed(window: &Window) -> gtk::Fixed {
-  webview_overlay(window).1
-}
-
-#[cfg(target_os = "linux")]
 fn keep_webview_bounds_in_fixed(webview: &WebView, bounds: wry::Rect) {
   let gtk_webview = webview.webview();
   let scale_factor = gtk_webview.scale_factor() as f64;
@@ -5250,8 +5245,8 @@ You may have it installed on another user account, but it is not available for t
   let webview = match kind {
     #[cfg(target_os = "linux")]
     WebviewKind::WindowChild => {
-      let fixed = webview_fixed(window);
-      webview_builder.build_gtk(&fixed)
+      let (_, layer) = webview_overlay(window);
+      webview_builder.build_gtk(&layer)
     }
     #[cfg(not(any(
       target_os = "windows",
@@ -5282,8 +5277,11 @@ You may have it installed on another user account, but it is not available for t
       let builder = webview_builder.build(&window);
       #[cfg(target_os = "linux")]
       let builder = {
-        let fixed = webview_fixed(window);
-        webview_builder.build_gtk(&fixed)
+        let (overlay, _) = webview_overlay(window);
+        if overlay.child().is_some() {
+          log::error!("cannot add a window-content webview: the GTK overlay already has a main child");
+        }
+        webview_builder.build_gtk(&overlay)
       };
       #[cfg(not(any(
         target_os = "windows",
