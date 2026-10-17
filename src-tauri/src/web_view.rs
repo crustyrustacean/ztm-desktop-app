@@ -242,6 +242,10 @@ fn is_authenticated_academy_url(url: &Url) -> bool {
     })
 }
 
+fn should_enhance_page(url: &Url) -> bool {
+    course_url(url.as_str()).is_ok() && is_authenticated_academy_url(url)
+}
+
 fn report_authentication<R: Runtime>(app: &tauri::AppHandle<R>, event: PageLoadEvent, url: &Url) {
     if event == PageLoadEvent::Finished && is_authenticated_academy_url(url) {
         let _ = app.emit_to(MAIN_WINDOW_LABEL, AUTHENTICATED_EVENT, ());
@@ -650,7 +654,7 @@ mod tests {
     use super::{
         AUTHENTICATION_ROUTES, FullscreenWindowLifecycle, INIT_SCRIPT, PageSession,
         THEME_STORAGE_KEY, WebTheme, course_url, init_script, is_academy_exit_navigation,
-        is_authenticated_academy_url, theme_update_script,
+        is_authenticated_academy_url, should_enhance_page, theme_update_script,
     };
 
     #[test]
@@ -743,6 +747,24 @@ mod tests {
                 !is_authenticated_academy_url(&url.parse().unwrap()),
                 "{url}"
             );
+        }
+    }
+
+    #[test]
+    fn enhances_only_trusted_non_authentication_academy_pages() {
+        for url in [
+            "https://academy.zerotomastery.io/",
+            "https://academy.zerotomastery.io/courses/enrolled/697434",
+        ] {
+            assert!(should_enhance_page(&url.parse().unwrap()), "{url}");
+        }
+        for url in [
+            "https://academy.zerotomastery.io/sign_in",
+            "https://academy.zerotomastery.io/users/sign_in",
+            "https://sso.teachable.com/secure/441520/identity/login/otp",
+            "https://academy.zerotomastery.io.example.com/courses/enrolled/697434",
+        ] {
+            assert!(!should_enhance_page(&url.parse().unwrap()), "{url}");
         }
     }
 
