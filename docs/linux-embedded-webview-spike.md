@@ -2,15 +2,17 @@
 
 ## Verdict
 
-**Not viable with the tested `gtk::Fixed` implementation.** The experiment reached
-the time-box stop condition at Step 4: opening an embedded Academy page makes the
-main window grow continuously and leaves it non-interactive. The layout never
-stabilizes, so bounds, resizing, pointer input, video playback, and session reuse
-cannot be evaluated meaningfully.
+**Viable in the tested WSLg environment with the overlay runtime patch.** A
+`gtk::Overlay` owns the window-content webview as its main child and a
+pass-through `gtk::Fixed` layer for positioned child webviews. The window no
+longer grows, both webviews remain interactive, and the Academy child follows its
+slot through resize and sidebar changes.
 
-The production behavior on `31/feat/web-view-open-modes` should remain the Linux
-top-level Academy window until the runtime has a child-container implementation
-whose size requisition does not feed back into the parent window.
+X11 rendered correctly without an additional WebKit setting. Wayland layout and
+input were also correct, but WSLg showed a blank gray compositor surface until
+`WEBKIT_DISABLE_DMABUF_RENDERER=1` was set. That is a WebKitGTK/WSLg rendering
+workaround, not a layout workaround. `WEBKIT_DISABLE_COMPOSITING_MODE=1` was not
+needed.
 
 ## Test environment
 
@@ -23,8 +25,8 @@ whose size requisition does not feed back into the parent window.
 - Rust 1.99.1
 
 This is a WSLg run, not a complete native-desktop matrix. WSLg exposed both X and
-Wayland display sockets, but the session did not identify itself as X11 or Wayland.
-Separate native X11 and Wayland sessions were therefore not tested.
+Wayland display sockets while leaving `XDG_SESSION_TYPE` unset, so the backends
+were selected explicitly with `GDK_BACKEND=x11` and `GDK_BACKEND=wayland`.
 
 ## Baseline
 
@@ -33,92 +35,103 @@ Before the spike changes:
 - `npm test`: 23/23 passed
 - `npx tsc --noEmit`: passed
 - `npm run test:browser`: 28/28 passed
-- standalone browser regression: 28/28 passed
 - `cargo test`: 25 passed, 0 failed, 1 ignored
 - the existing Linux Academy implementation opened a stable, interactive separate
-  window as expected
+  window
 
 ## Upstream behavior confirmed
 
 In unmodified `tauri-runtime-wry` 2.12.1, Linux `WindowChild` and
 `WindowContent` webviews are both built into the window's `default_vbox` rather
-than a coordinate-aware child container. That explains why requested child bounds
-are not respected. Wry 0.57.0 has a `gtk::Fixed` child path and applies bounds with
-`move_` plus a size request/allocation, which made `gtk::Fixed` the narrowest
-runtime experiment for [tauri-apps/tauri#16132](https://github.com/tauri-apps/tauri/issues/16132).
+than a coordinate-aware child container. Wry 0.57.0 already has a `gtk::Fixed`
+child path that applies bounds with `move_` and a size request, making a narrow
+runtime patch possible for
+[tauri-apps/tauri#16132](https://github.com/tauri-apps/tauri/issues/16132).
 
 The vendored runtime is an exact Cargo-registry copy at commit `226893c`; its two
-licenses are retained. The spike changes are isolated behind Linux target guards
-and can be inspected with:
+licenses are retained. The Linux-only patch can be inspected with:
 
 ```text
-git diff 226893c..d781f57 -- src-tauri/vendor/tauri-runtime-wry/src/lib.rs
+git diff 226893c -- src-tauri/vendor/tauri-runtime-wry/src/lib.rs
 ```
 
 ## Results by step
 
-1. **Vendor runtime:** passed. Cargo resolved `tauri-runtime-wry` from
-   `src-tauri/vendor/tauri-runtime-wry`, and the vendored crate built unchanged.
-2. **Add `gtk::Fixed`:** built and launched. One named fixed container was packed
-   into the default vbox with expand/fill, with the window-content webview added
-   before child webviews.
-3. **Persist geometry:** built. Child `set_bounds`, `set_size`, and `set_position`
-   operations also call `Fixed::move_` and set the logical size request. A fixed
-   size-allocation callback attempts to keep the content webview full-window.
-4. **Use embedded app path:** compiled and launched. Authentication remained in a
-   separate plain window; trusted non-auth Academy pages used the child webview,
-   shared persistent data directory, and post-load enhancement. On opening the
-   child, the main window immediately entered continuous growth and was not
-   interactive. Testing stopped as required. A later GDK broken-pipe message was
-   emitted only when the failed process was intentionally terminated.
+1. **Vendor runtime:** passed. Cargo resolves `tauri-runtime-wry` from
+   `src-tauri/vendor/tauri-runtime-wry`.
+2. **Initial `gtk::Fixed`:** reproduced the continuous-growth failure. Giving the
+   window-content webview an allocation-sized minimum request created a feedback
+   loop under WSLg client-side decorations.
+3. **Replace the root Fixed with an overlay:** passed. The window-content webview
+   is the overlay main child and fills it without a size request. Child webviews
+   use one pass-through Fixed overlay layer.
+4. **Persist child geometry:** passed. Child `set_bounds`, `set_size`, and
+   `set_position` operations call `Fixed::move_` and update the child size request
+   together, without allowing the layer to affect the window's requested size.
+5. **Use the embedded app path:** passed in WSLg. Authentication remains in a
+   separate plain window; trusted signed-in Academy pages use the embedded child,
+   shared persistent data directory, and post-load enhancement.
+6. **Fullscreen session sharing:** passed after the fullscreen window was moved
+   onto the same persistent Academy data directory.
 
-## Failure analysis
+## Failure analysis and overlay design
 
-The fixed container is packed into the default vbox with expand/fill. Its
-`size-allocate` callback assigns the content webview a size request equal to the
-container allocation. That child request then contributes to the parent's natural
-size, producing a requisition/allocation feedback loop: each allocation requests a
-larger content area and the top-level window grows again. The embedded Academy
-child shares the same fixed container, so GTK remains busy relaying out the widget
-tree and normal input cannot be used.
+The failed design put both content and child webviews in one `gtk::Fixed`, then
+called `set_size_request(allocation)` on the window-content webview from the
+Fixed's `size-allocate` callback. That minimum request contributed to the parent's
+next natural size, producing a requisition/allocation feedback loop and continuous
+window growth.
 
-This invalidates the assumption that a `gtk::Fixed` can both participate normally
-in Tauri's vbox and have its content child sized by `set_size_request`. A viable
-runtime fix likely needs a custom container/allocation implementation (or an
-upstream Tauri/Wry change) that allocates overlays without allowing their requested
-size to determine the parent window's natural size.
+The working design packs one expanding `gtk::Overlay` into Tauri's default vbox.
+Wry adds the window-content webview as the overlay's main child, so GTK allocates
+it to the available area without an explicit size request. A named `gtk::Fixed`
+is added with `add_overlay` for child webviews, and the layer is pass-through so
+input outside a child reaches the content webview. Overlay children do not
+contribute to the overlay's minimum size. Only actual child webviews receive size
+requests, so their bounds cannot ratchet the top-level window.
 
 ## Manual checklist
 
-- Course occupies the exact Web View slot: **failed** (unbounded window growth)
-- Main-window resize and sidebar movement: **blocked**
-- Pointer input and scrolling: **failed** (window not interactive; no pointer crash
-  observed before termination)
-- Login then course in embedded view: **blocked**
-- Back/forward and SPA navigation: **blocked**
-- Close/reopen and session reuse: **blocked**
-- Theme synchronization: **blocked**
-- Video playback: **blocked**
-- 100% and fractional scaling: **blocked**
-- Native X11 session: **not tested**
-- Native Wayland session: **not tested**
+- Course occupies the exact Web View slot: **passed on X11 and Wayland**
+- Window resize both smaller and larger: **passed on X11 and Wayland**
+- Sidebar collapse and slot movement: **passed on X11 and Wayland**
+- Pointer input in shell and Academy view: **passed on X11 and Wayland**
+- Login then signed-in course in embedded view: **passed**
+- Fullscreen promotion, authenticated content, and demotion: **passed**
+- Wayland rendering: **passed with `WEBKIT_DISABLE_DMABUF_RENDERER=1`**
+- Back/forward and broader SPA navigation: **not fully exercised**
+- Keyboard focus across both webviews: **not explicitly recorded**
+- Theme and structural navigation hiding: **not explicitly rerun**
+- Playback resume and per-course restore: **not explicitly rerun**
+- Retain page/scroll/video while switching shell views: **automated coverage
+  passed; manual WSLg check not rerun after the merge**
+- Sign out and back in: **not testable; the app has no sign-out action**
+- Open-in-a-window fallback: **not explicitly rerun**
+- 100% and 200% scaling: **not explicitly recorded**
 
-No screenshot was captured because the window did not reach a stable geometry.
+## Automated checks after the overlay and retain-view merge
 
-## Automated checks after the spike
+- Windows `npm test`: 25/25 Node tests and 30/30 Playwright tests passed
+- `npx tsc --noEmit`: passed on Windows and WSL
+- Windows `npm run test:browser`: 30/30 passed
+- `cargo test`: 25 passed, 0 failed, 1 ignored on Windows and WSL
+- `cargo fmt --check`: passed on Windows and WSL
+- `cargo clippy --all-targets -- -D warnings`: passed on Windows and WSL
 
-- `npm test`: 23/23 Node tests and 28/28 Playwright tests passed
-- `npx tsc --noEmit`: passed
-- `npm run test:browser`: 28/28 passed
-- `cargo test`: 25 passed, 0 failed, 1 ignored
-- `cargo fmt --check`: passed
-- `cargo clippy --all-targets --all-features -- -D warnings`: passed
+The 25 Node tests also passed inside WSL. WSL Playwright could not launch because
+the repository selects the `msedge` channel and Microsoft Edge was not installed
+at `/opt/microsoft/msedge/msedge`; the Linux CI workflow does not run browser
+tests.
 
 ## Reproduction
 
-From WSL, start the frontend and then the Tauri app using the WSL-visible frontend
-address. Open a signed-in course so the non-auth child path is selected. The main
-window begins expanding continuously as soon as the child webview is mounted.
+From WSL, select a backend explicitly because WSLg does not set
+`XDG_SESSION_TYPE`. Wayland currently also needs the WebKitGTK renderer workaround:
+
+```text
+GDK_BACKEND=x11 npm run tauri dev
+GDK_BACKEND=wayland WEBKIT_DISABLE_DMABUF_RENDERER=1 npm run tauri dev
+```
 
 Relevant commits:
 
@@ -126,3 +139,6 @@ Relevant commits:
 - `ad61ffc` — mount Linux webviews in `gtk::Fixed`
 - `d781f57` — persist embedded webview geometry
 - `f383ace` — exercise the embedded Academy app path
+- `bef58bf` — add the overlay and pass-through child layer
+- `3c72c98` — route content and child webviews into their proper containers
+- `c18bf49` — apply child bounds atomically
