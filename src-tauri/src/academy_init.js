@@ -6,6 +6,30 @@
   const MEDIA_READY_MESSAGE = "ztm-desktop-media-ready";
   const MEDIA_RESTORE_MESSAGE = "ztm-desktop-media-restore";
   const MEDIA_CAPTURE_MESSAGE = "ztm-desktop-media-capture";
+  const MEDIA_EVENTS = ["timeupdate", "ratechange", "play", "pause", "ended"];
+
+  function applyMediaSession(media, session) {
+    if (!session || session.mediaTime == null) return;
+    const apply = () => {
+      media.currentTime = session.mediaTime;
+      if (session.playbackRate != null) media.playbackRate = session.playbackRate;
+      if (session.mediaPaused === false) media.play().catch(() => {});
+      else if (session.mediaPaused === true) media.pause();
+    };
+    if (media.readyState >= 1) apply();
+    else media.addEventListener("loadedmetadata", apply, { once: true });
+  }
+
+  function wireMediaElements(wired, session, onMediaEvent) {
+    for (const media of document.querySelectorAll("video, audio")) {
+      if (wired.has(media)) continue;
+      wired.add(media);
+      for (const event of MEDIA_EVENTS) {
+        media.addEventListener(event, () => onMediaEvent(media));
+      }
+      applyMediaSession(media, session);
+    }
+  }
 
   // Authentication is owned by Teachable and is sensitive to DOM, class, and
   // style changes made before its own scripts initialize. Leave those documents
@@ -42,54 +66,24 @@
       );
     }
 
-    function restoreMedia(media) {
-      if (!pendingRestore || pendingRestore.mediaTime == null) return;
-      const apply = () => {
-        media.currentTime = pendingRestore.mediaTime;
-        if (pendingRestore.playbackRate != null) {
-          media.playbackRate = pendingRestore.playbackRate;
-        }
-        if (pendingRestore.mediaPaused === false) {
-          media.play().catch(() => {});
-        } else if (pendingRestore.mediaPaused === true) {
-          media.pause();
-        }
-      };
-      if (media.readyState >= 1) apply();
-      else media.addEventListener("loadedmetadata", apply, { once: true });
-    }
-
-    function wireMedia() {
-      for (const media of document.querySelectorAll("video, audio")) {
-        if (wiredMedia.has(media)) continue;
-        wiredMedia.add(media);
-        for (const event of [
-          "timeupdate",
-          "ratechange",
-          "play",
-          "pause",
-          "ended",
-        ]) {
-          media.addEventListener(event, () => reportMedia(media));
-        }
-        restoreMedia(media);
-      }
+    function wireFrameMedia() {
+      wireMediaElements(wiredMedia, pendingRestore, reportMedia);
     }
 
     window.addEventListener("message", (event) => {
       if (event.source !== window.top) return;
       if (event.data?.type === MEDIA_CAPTURE_MESSAGE) {
-        wireMedia();
+        wireFrameMedia();
         const media = activeMedia || document.querySelector("video, audio");
         if (media) reportMedia(media);
         return;
       }
       if (event.data?.type !== MEDIA_RESTORE_MESSAGE) return;
       pendingRestore = event.data.session;
-      wireMedia();
+      wireFrameMedia();
     });
-    document.addEventListener("DOMContentLoaded", wireMedia);
-    new MutationObserver(wireMedia).observe(document, {
+    document.addEventListener("DOMContentLoaded", wireFrameMedia);
+    new MutationObserver(wireFrameMedia).observe(document, {
       childList: true,
       subtree: true,
     });
@@ -553,36 +547,11 @@
 
   restore = resolvedRestore();
 
-  function applyMediaSession(media) {
-    if (!restore || restore.mediaTime == null) return;
-    const apply = () => {
-      media.currentTime = restore.mediaTime;
-      if (restore.playbackRate != null) media.playbackRate = restore.playbackRate;
-      if (restore.mediaPaused === false) media.play().catch(() => {});
-      else if (restore.mediaPaused === true) media.pause();
-    };
-    if (media.readyState >= 1) apply();
-    else media.addEventListener("loadedmetadata", apply, { once: true });
-  }
-
-  function wireMediaElements() {
-    for (const media of document.querySelectorAll("video, audio")) {
-      if (wiredMedia.has(media)) continue;
-      wiredMedia.add(media);
-      for (const event of [
-        "timeupdate",
-        "ratechange",
-        "play",
-        "pause",
-        "ended",
-      ]) {
-        media.addEventListener(event, () => {
-          activeMedia = media;
-          saveSession();
-        });
-      }
-      applyMediaSession(media);
-    }
+  function wireTopLevelMedia() {
+    wireMediaElements(wiredMedia, restore, (media) => {
+      activeMedia = media;
+      saveSession();
+    });
   }
 
   function frameForSource(source) {
@@ -625,17 +594,17 @@
   function restoreSession() {
     if (!restore || restore.url !== location.href) return;
     window.scrollTo(restore.scrollX || 0, restore.scrollY || 0);
-    wireMediaElements();
+    wireTopLevelMedia();
     for (const frame of document.querySelectorAll("iframe")) {
       sendFrameRestore(frame.contentWindow);
     }
   }
   document.addEventListener("DOMContentLoaded", () => {
     restoreSession();
-    wireMediaElements();
+    wireTopLevelMedia();
   });
   new MutationObserver(() => {
-    wireMediaElements();
+    wireTopLevelMedia();
     if (restore) {
       for (const frame of document.querySelectorAll("iframe")) {
         sendFrameRestore(frame.contentWindow);
