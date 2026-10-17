@@ -144,54 +144,77 @@ test("a theme reset reload cannot restore the webview creation-time theme", asyn
   await expect(page.locator("html")).toHaveCSS("color-scheme", "dark");
 });
 
-test("reopening a course returns to its last lesson and playback second", async ({
-  page,
-}) => {
-  const lessonUrl =
-    "https://academy.zerotomastery.io/courses/697434/lectures/12345";
-  await page.goto(lessonUrl);
-  await page.evaluate(() => {
-    const video = document.createElement("video");
-    Object.defineProperties(video, {
-      currentTime: { configurable: true, writable: true, value: 93.25 },
-      paused: { configurable: true, value: true },
-      playbackRate: { configurable: true, writable: true, value: 1.5 },
-      readyState: { configurable: true, value: 1 },
-    });
-    document.body.appendChild(video);
-    (
-      window as typeof window & {
-        __ZTM_DESKTOP_SAVE_SESSION__: () => void;
-      }
-    ).__ZTM_DESKTOP_SAVE_SESSION__();
-  });
+for (const savedPaused of [false, true]) {
+  test(`reopening a course restores a ${savedPaused ? "paused" : "playing"} session`, async ({
+    page,
+  }) => {
+    const lessonUrl =
+      "https://academy.zerotomastery.io/courses/697434/lectures/12345";
+    await page.goto(lessonUrl);
+    await page.evaluate((paused) => {
+      const video = document.createElement("video");
+      Object.defineProperties(video, {
+        currentTime: { configurable: true, writable: true, value: 93.25 },
+        paused: { configurable: true, value: paused },
+        playbackRate: { configurable: true, writable: true, value: 1.5 },
+        readyState: { configurable: true, value: 1 },
+      });
+      document.body.appendChild(video);
+      (
+        window as typeof window & {
+          __ZTM_DESKTOP_SAVE_SESSION__: () => void;
+        }
+      ).__ZTM_DESKTOP_SAVE_SESSION__();
+    }, savedPaused);
 
-  await page.goto(
-    "https://academy.zerotomastery.io/courses/enrolled/697434",
-  );
-  await expect(page).toHaveURL(lessonUrl);
+    await page.goto(
+      "https://academy.zerotomastery.io/courses/enrolled/697434",
+    );
+    await expect(page).toHaveURL(lessonUrl);
 
-  const restored = await page.evaluate(() => {
-    const video = document.createElement("video");
-    Object.defineProperties(video, {
-      currentTime: { configurable: true, writable: true, value: 0 },
-      paused: { configurable: true, value: true },
-      playbackRate: { configurable: true, writable: true, value: 1 },
-      readyState: { configurable: true, value: 1 },
-    });
-    document.body.appendChild(video);
-    return new Promise<{ currentTime: number; playbackRate: number }>(
-      (resolve) =>
+    const restored = await page.evaluate((initiallyPaused) => {
+      const video = document.createElement("video");
+      let paused = initiallyPaused;
+      Object.defineProperties(video, {
+        currentTime: { configurable: true, writable: true, value: 0 },
+        paused: { configurable: true, get: () => paused },
+        playbackRate: { configurable: true, writable: true, value: 1 },
+        readyState: { configurable: true, value: 1 },
+        play: {
+          configurable: true,
+          value: async () => {
+            paused = false;
+          },
+        },
+        pause: {
+          configurable: true,
+          value: () => {
+            paused = true;
+          },
+        },
+      });
+      document.body.appendChild(video);
+      return new Promise<{
+        currentTime: number;
+        paused: boolean;
+        playbackRate: number;
+      }>((resolve) =>
         requestAnimationFrame(() =>
           resolve({
             currentTime: video.currentTime,
+            paused: video.paused,
             playbackRate: video.playbackRate,
           }),
         ),
-    );
+      );
+    }, !savedPaused);
+    expect(restored).toEqual({
+      currentTime: 93.25,
+      paused: savedPaused,
+      playbackRate: 1.5,
+    });
   });
-  expect(restored).toEqual({ currentTime: 93.25, playbackRate: 1.5 });
-});
+}
 
 test("media inside a player frame participates in fullscreen session capture", async ({
   page,
