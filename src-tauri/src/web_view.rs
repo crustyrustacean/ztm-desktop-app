@@ -41,18 +41,19 @@ const THEME_STORAGE_KEY: &str = "ztm-desktop-app-theme";
 fn init_script(view: &str, session: Option<&PageSession>, theme: WebTheme) -> String {
     let session = serde_json::to_string(&session).expect("page session serializes");
     let theme = theme.as_str();
+    let init_script = INIT_SCRIPT
+        .replace(
+            "__ZTM_AUTH_ROUTES__",
+            &serde_json::to_string(AUTHENTICATION_ROUTES).expect("auth routes serialize"),
+        )
+        .replace(
+            "__ZTM_THEME_STORAGE_KEY__",
+            &serde_json::to_string(THEME_STORAGE_KEY).expect("theme key serializes"),
+        );
     format!(
         "window.__ZTM_DESKTOP_VIEW__ = {view:?};\n\
          window.__ZTM_DESKTOP_THEME__ = {theme:?};\n\
-         window.__ZTM_DESKTOP_RESTORE__ = {session};\n{INIT_SCRIPT}"
-    )
-    .replace(
-        "__ZTM_AUTH_ROUTES__",
-        &serde_json::to_string(AUTHENTICATION_ROUTES).expect("auth routes serialize"),
-    )
-    .replace(
-        "__ZTM_THEME_STORAGE_KEY__",
-        &serde_json::to_string(THEME_STORAGE_KEY).expect("theme key serializes"),
+         window.__ZTM_DESKTOP_RESTORE__ = {session};\n{init_script}"
     )
 }
 
@@ -647,9 +648,9 @@ fn place<R: Runtime>(_webview: &Webview<R>, _bounds: Bounds) -> Result<(), Strin
 #[cfg(test)]
 mod tests {
     use super::{
-        AUTHENTICATION_ROUTES, FullscreenWindowLifecycle, INIT_SCRIPT, THEME_STORAGE_KEY, WebTheme,
-        course_url, init_script, is_academy_exit_navigation, is_authenticated_academy_url,
-        theme_update_script,
+        AUTHENTICATION_ROUTES, FullscreenWindowLifecycle, INIT_SCRIPT, PageSession,
+        THEME_STORAGE_KEY, WebTheme, course_url, init_script, is_academy_exit_navigation,
+        is_authenticated_academy_url, theme_update_script,
     };
 
     #[test]
@@ -662,6 +663,16 @@ mod tests {
         assert!(!script.contains("__ZTM_THEME_STORAGE_KEY__"));
         assert!(script.contains(&serde_json::to_string(AUTHENTICATION_ROUTES).unwrap()));
         assert!(script.contains(&serde_json::to_string(THEME_STORAGE_KEY).unwrap()));
+    }
+
+    #[test]
+    fn academy_script_does_not_replace_placeholders_inside_session_json() {
+        let url = "https://academy.zerotomastery.io/courses/__ZTM_AUTH_ROUTES__";
+        let session = PageSession::at_url(url.parse().unwrap());
+
+        let script = init_script("embedded", Some(&session), WebTheme::Light);
+
+        assert!(script.contains(url));
     }
 
     #[test]
