@@ -576,8 +576,8 @@ fn promote_embedded<R: Runtime>(
     let fullscreen_init = init_script("fullscreen", session.as_ref(), theme);
     let fallback_session = session.unwrap_or_else(|| PageSession::at_url(url.clone()));
     let navigation_app = app.clone();
-    let fullscreen_window =
-        match WebviewWindowBuilder::new(app, FULLSCREEN_WINDOW_LABEL, WebviewUrl::External(url))
+    let fullscreen_builder =
+        WebviewWindowBuilder::new(app, FULLSCREEN_WINDOW_LABEL, WebviewUrl::External(url))
             .title("ZTM Academy")
             .fullscreen(true)
             .theme(Some(theme.tauri()))
@@ -599,15 +599,21 @@ fn promote_embedded<R: Runtime>(
                     let _ = window.destroy();
                 }
                 false
-            })
-            .build()
-        {
-            Ok(window) => window,
-            Err(error) => {
-                let _ = webview.show();
-                return Err(error.to_string());
-            }
-        };
+            });
+    #[cfg(target_os = "linux")]
+    let fullscreen_builder = fullscreen_builder.data_directory(
+        app.path()
+            .app_data_dir()
+            .map_err(|error| error.to_string())?
+            .join(ACADEMY_DATA_DIR),
+    );
+    let fullscreen_window = match fullscreen_builder.build() {
+        Ok(window) => window,
+        Err(error) => {
+            let _ = webview.show();
+            return Err(error.to_string());
+        }
+    };
     // Building the new native window gives any queued WebView2 fullscreen event
     // time to reach Tauri. Restore the parent again after that event is drained.
     window.set_fullscreen(false).map_err(|e| e.to_string())?;
