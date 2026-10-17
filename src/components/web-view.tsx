@@ -17,6 +17,7 @@ export type WebViewSession = {
   playbackRate: number | null;
 };
 
+/** A page to load in the web view. `id` changes on every request, even for the same URL. */
 export type WebViewRequest = {
   url: string;
   id: number;
