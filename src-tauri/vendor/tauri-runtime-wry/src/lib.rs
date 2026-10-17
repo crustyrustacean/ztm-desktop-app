@@ -5272,19 +5272,6 @@ You may have it installed on another user account, but it is not available for t
   }
   .map_err(|e| Error::CreateWebview(Box::new(e)))?;
 
-  #[cfg(target_os = "linux")]
-  if kind == WebviewKind::WindowContent {
-    let fixed = webview_fixed(window);
-    let gtk_webview = webview.webview().clone();
-    fixed.move_(&gtk_webview, 0, 0);
-    let allocation = fixed.allocation();
-    gtk_webview.set_size_request(allocation.width(), allocation.height());
-    fixed.connect_size_allocate(move |fixed, allocation| {
-      fixed.move_(&gtk_webview, 0, 0);
-      gtk_webview.set_size_request(allocation.width(), allocation.height());
-    });
-  }
-
   if kind == WebviewKind::WindowContent {
     #[cfg(any(
       target_os = "linux",
