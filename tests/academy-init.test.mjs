@@ -38,7 +38,10 @@ function runAcademyScript(
   const storage = new Map(storageEntries);
   const sessionStorage = new Map();
   const scrollCalls = [];
+  const documentListenerRegistrations = [];
+  const windowListenerRegistrations = [];
   const document = {
+    readyState: documentReady ? "complete" : "loading",
     fullscreenElement: null,
     webkitFullscreenElement: null,
     documentElement: documentReady
@@ -64,7 +67,10 @@ function runAcademyScript(
       if (selector === "iframe") return [];
       return selector.startsWith("img[") ? lessonLogos : courseBackLinks;
     },
-    addEventListener: (name, listener) => documentListeners.set(name, listener),
+    addEventListener: (name, listener) => {
+      documentListenerRegistrations.push(name);
+      documentListeners.set(name, listener);
+    },
   };
   const window = {
     __ZTM_DESKTOP_VIEW__: view,
@@ -83,7 +89,10 @@ function runAcademyScript(
     scrollX: 12,
     scrollY: 34,
     scrollTo: (x, y) => scrollCalls.push({ x, y }),
-    addEventListener: (name, listener) => windowListeners.set(name, listener),
+    addEventListener: (name, listener) => {
+      windowListenerRegistrations.push(name);
+      windowListeners.set(name, listener);
+    },
   };
   window.top = window;
   const initialUrl = new URL(pageUrl);
@@ -97,7 +106,7 @@ function runAcademyScript(
     },
   };
 
-  vm.runInNewContext(initScript, {
+  const context = {
     Boolean,
     console,
     document,
@@ -114,17 +123,22 @@ function runAcademyScript(
     },
     URL,
     window,
-  });
+  };
+  const evaluate = () => vm.runInNewContext(initScript, context);
+  evaluate();
 
   return {
     document,
+    documentListenerRegistrations,
     documentListeners,
+    evaluate,
     invokes,
     location,
     scrollCalls,
     storage,
     styles,
     window,
+    windowListenerRegistrations,
     windowListeners,
   };
 }
@@ -134,6 +148,47 @@ test("initialization survives running before the document element exists", () =>
 
   assert.equal(runtime.styles.size, 0);
   assert.equal(typeof runtime.documentListeners.get("DOMContentLoaded"), "function");
+
+  runtime.document.documentElement = {
+    appendChild: (element) => runtime.styles.set(element.id, element),
+    classList: { contains: () => false, toggle() {} },
+    dataset: {},
+    style: {},
+  };
+  runtime.document.head = {
+    appendChild: (element) => runtime.styles.set(element.id, element),
+  };
+  runtime.documentListeners.get("DOMContentLoaded")();
+
+  assert.ok(runtime.styles.has("ztm-desktop-app-style"));
+});
+
+test("initialization setup runs immediately after the document has loaded", () => {
+  const restore = {
+    url: "https://academy.zerotomastery.io/courses/enrolled/697434",
+    scrollX: 45,
+    scrollY: 900,
+    mediaTime: null,
+    mediaPaused: null,
+    playbackRate: null,
+  };
+
+  const runtime = runAcademyScript("embedded", restore);
+
+  assert.ok(runtime.styles.has("ztm-desktop-app-style"));
+  assert.deepEqual(runtime.scrollCalls, [{ x: 45, y: 900 }]);
+});
+
+test("evaluating the initialization script twice is a no-op", () => {
+  const runtime = runAcademyScript();
+  const documentListeners = runtime.documentListenerRegistrations.length;
+  const windowListeners = runtime.windowListenerRegistrations.length;
+
+  runtime.evaluate();
+
+  assert.equal(runtime.documentListenerRegistrations.length, documentListeners);
+  assert.equal(runtime.windowListenerRegistrations.length, windowListeners);
+  assert.equal(runtime.styles.size, 1);
 });
 
 test("embedded fullscreen invokes the native promotion command once per transition", () => {
@@ -447,8 +502,6 @@ test("a transferred session restores the page position", () => {
   };
   const runtime = runAcademyScript("embedded", restore);
 
-  runtime.documentListeners.get("DOMContentLoaded")();
-
   assert.deepEqual(runtime.scrollCalls, [{ x: 45, y: 900 }]);
 });
 
@@ -492,8 +545,6 @@ test("a URL-only fullscreen fallback retains the durable playback checkpoint", (
     [["ztm-desktop-course-progress-v2", progress]],
     [media],
   );
-
-  runtime.documentListeners.get("DOMContentLoaded")();
 
   assert.equal(media.currentTime, 142.75);
   assert.equal(media.playbackRate, 1.5);

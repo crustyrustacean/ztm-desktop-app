@@ -42,6 +42,27 @@
         .filter(Boolean)
         .some((segment) => AUTHENTICATION_ROUTES.includes(segment)));
   if (isAuthenticationDocument) return;
+  if (window.__ZTM_DESKTOP_ENHANCED__) return;
+  window.__ZTM_DESKTOP_ENHANCED__ = true;
+
+  const documentReadyTasks = [];
+  let waitingForDocument = false;
+  function whenDocumentReady(task) {
+    if (document.readyState !== "loading") {
+      task();
+      return;
+    }
+    documentReadyTasks.push(task);
+    if (waitingForDocument) return;
+    waitingForDocument = true;
+    document.addEventListener(
+      "DOMContentLoaded",
+      () => {
+        for (const readyTask of documentReadyTasks.splice(0)) readyTask();
+      },
+      { once: true },
+    );
+  }
 
   // The all-frame initialization script lets cross-origin player frames report
   // native <video>/<audio> progress without granting them access to Tauri IPC.
@@ -83,7 +104,7 @@
       pendingRestore = event.data.session;
       wireFrameMedia();
     });
-    document.addEventListener("DOMContentLoaded", wireFrameMedia);
+    whenDocumentReady(wireFrameMedia);
     new MutationObserver(wireFrameMedia).observe(document, {
       childList: true,
       subtree: true,
@@ -290,7 +311,7 @@
 
   applyAppTheme(appTheme);
   addStyle();
-  document.addEventListener("DOMContentLoaded", () => {
+  whenDocumentReady(() => {
     applyAppTheme(appTheme);
     addStyle();
   });
@@ -600,7 +621,7 @@
       sendFrameRestore(frame.contentWindow);
     }
   }
-  document.addEventListener("DOMContentLoaded", () => {
+  whenDocumentReady(() => {
     restoreSession();
     wireTopLevelMedia();
   });
