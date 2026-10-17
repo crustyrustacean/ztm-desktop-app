@@ -31,6 +31,9 @@ tempfile = "3"
 webview2-com = "0.39"
 windows-core = "0.62"
 
+[patch.crates-io]
+tauri-runtime-wry = { path = "vendor/tauri-runtime-wry" }
+
 
 # Read the optimization guideline for more details: https://tauri.app/concept/size/#cargo-configuration
 [profile.release]
