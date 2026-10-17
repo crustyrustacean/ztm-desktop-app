@@ -3725,6 +3725,8 @@ fn handle_user_message<T: UserEvent>(
           WebviewMessage::SetBounds(bounds) => {
             let bounds: RectWrapper = bounds.into();
             let bounds = bounds.0;
+            #[cfg(target_os = "linux")]
+            let fixed_bounds = bounds.clone();
 
             if let Some(b) = &mut *webview.bounds.lock().unwrap() {
               let scale_factor = window.scale_factor();
@@ -3740,6 +3742,8 @@ fn handle_user_message<T: UserEvent>(
             if let Err(e) = webview.set_bounds(bounds) {
               log::error!("failed to set webview size: {e}");
             }
+            #[cfg(target_os = "linux")]
+            keep_webview_bounds_in_fixed(&webview, fixed_bounds);
           }
           WebviewMessage::SetSize(size) => match webview.bounds() {
             Ok(mut bounds) => {
@@ -3754,9 +3758,13 @@ fn handle_user_message<T: UserEvent>(
                 b.height_rate = size.height / window_size.height;
               }
 
+              #[cfg(target_os = "linux")]
+              let fixed_bounds = bounds.clone();
               if let Err(e) = webview.set_bounds(bounds) {
                 log::error!("failed to set webview size: {e}");
               }
+              #[cfg(target_os = "linux")]
+              keep_webview_bounds_in_fixed(&webview, fixed_bounds);
             }
             Err(e) => {
               log::error!("failed to get webview bounds: {e}");
@@ -3775,9 +3783,13 @@ fn handle_user_message<T: UserEvent>(
                 b.y_rate = position.y / window_size.height;
               }
 
+              #[cfg(target_os = "linux")]
+              let fixed_bounds = bounds.clone();
               if let Err(e) = webview.set_bounds(bounds) {
                 log::error!("failed to set webview position: {e}");
               }
+              #[cfg(target_os = "linux")]
+              keep_webview_bounds_in_fixed(&webview, fixed_bounds);
             }
             Err(e) => {
               log::error!("failed to get webview bounds: {e}");
@@ -4283,14 +4295,19 @@ fn handle_event_loop<T: UserEvent>(
               let size = size.to_logical::<f32>(window.scale_factor());
               for webview in webviews {
                 if let Some(b) = &*webview.bounds.lock().unwrap() {
-                  if let Err(e) = webview.set_bounds(wry::Rect {
+                  let bounds = wry::Rect {
                     position: LogicalPosition::new(size.width * b.x_rate, size.height * b.y_rate)
                       .into(),
                     size: LogicalSize::new(size.width * b.width_rate, size.height * b.height_rate)
                       .into(),
-                  }) {
+                  };
+                  #[cfg(target_os = "linux")]
+                  let fixed_bounds = bounds.clone();
+                  if let Err(e) = webview.set_bounds(bounds) {
                     log::error!("failed to autoresize webview: {e}");
                   }
+                  #[cfg(target_os = "linux")]
+                  keep_webview_bounds_in_fixed(&webview, fixed_bounds);
                 }
               }
             }
@@ -4680,6 +4697,22 @@ fn webview_fixed(window: &Window) -> gtk::Fixed {
   vbox.pack_start(&fixed, true, true, 0);
   fixed.show();
   fixed
+}
+
+#[cfg(target_os = "linux")]
+fn keep_webview_bounds_in_fixed(webview: &WebView, bounds: wry::Rect) {
+  let gtk_webview = webview.webview();
+  let scale_factor = gtk_webview.scale_factor() as f64;
+  let (width, height) = bounds.size.to_logical::<i32>(scale_factor).into();
+  let (x, y) = bounds.position.to_logical::<i32>(scale_factor).into();
+
+  if let Some(fixed) = gtk_webview
+    .parent()
+    .and_then(|parent| parent.downcast::<gtk::Fixed>().ok())
+  {
+    fixed.move_(&gtk_webview, x, y);
+    gtk_webview.set_size_request(width, height);
+  }
 }
 
 #[derive(Debug, Clone)]
@@ -5238,6 +5271,19 @@ You may have it installed on another user account, but it is not available for t
     }
   }
   .map_err(|e| Error::CreateWebview(Box::new(e)))?;
+
+  #[cfg(target_os = "linux")]
+  if kind == WebviewKind::WindowContent {
+    let fixed = webview_fixed(window);
+    let gtk_webview = webview.webview().clone();
+    fixed.move_(&gtk_webview, 0, 0);
+    let allocation = fixed.allocation();
+    gtk_webview.set_size_request(allocation.width(), allocation.height());
+    fixed.connect_size_allocate(move |fixed, allocation| {
+      fixed.move_(&gtk_webview, 0, 0);
+      gtk_webview.set_size_request(allocation.width(), allocation.height());
+    });
+  }
 
   if kind == WebviewKind::WindowContent {
     #[cfg(any(
