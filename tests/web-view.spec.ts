@@ -1,28 +1,37 @@
 import { expect, test } from "@playwright/test";
 import type { Page } from "@playwright/test";
+import {
+  ACADEMY_AUTHENTICATED_EVENT,
+  WEB_VIEW_DEMOTED_EVENT,
+  WEB_VIEW_PROMOTED_EVENT,
+} from "../src/lib/web-view-events";
 
 type InvokeCall = { command: string; args: Record<string, unknown> };
 
 async function authenticateAcademy(page: Page) {
   await expect
     .poll(() =>
-      page.evaluate(() =>
-        (
-          globalThis as typeof globalThis & { __TAURI_CALLS__: InvokeCall[] }
-        ).__TAURI_CALLS__.some(
-          (call) =>
-            call.command === "plugin:event|listen" &&
-            call.args.event === "academy-authenticated",
-        ),
+      page.evaluate(
+        (eventName) =>
+          (
+            globalThis as typeof globalThis & { __TAURI_CALLS__: InvokeCall[] }
+          ).__TAURI_CALLS__.some(
+            (call) =>
+              call.command === "plugin:event|listen" &&
+              call.args.event === eventName,
+          ),
+        ACADEMY_AUTHENTICATED_EVENT,
       ),
     )
     .toBe(true);
-  await page.evaluate(() =>
-    (
-      globalThis as typeof globalThis & {
-        __emitTauriEvent: (event: string) => void;
-      }
-    ).__emitTauriEvent("academy-authenticated"),
+  await page.evaluate(
+    (eventName) =>
+      (
+        globalThis as typeof globalThis & {
+          __emitTauriEvent: (event: string) => void;
+        }
+      ).__emitTauriEvent(eventName),
+    ACADEMY_AUTHENTICATED_EVENT,
   );
 }
 
@@ -120,12 +129,14 @@ test("the dashboard stays hidden until Academy authentication succeeds", async (
     )
     .toBeTruthy();
 
-  await page.evaluate(() =>
-    (
-      globalThis as typeof globalThis & {
-        __emitTauriEvent: (event: string) => void;
-      }
-    ).__emitTauriEvent("academy-authenticated"),
+  await page.evaluate(
+    (eventName) =>
+      (
+        globalThis as typeof globalThis & {
+          __emitTauriEvent: (event: string) => void;
+        }
+      ).__emitTauriEvent(eventName),
+    ACADEMY_AUTHENTICATED_EVENT,
   );
 
   await expect(page.getByRole("button", { name: "Dashboard" })).toBeVisible();
@@ -481,12 +492,14 @@ test("promotion returns the shell to Dashboard and disposes its child", async ({
   await page.getByRole("button", { name: "Web View" }).click();
   await expect(page.getByTestId("web-view-slot")).toBeVisible();
 
-  await page.evaluate(() =>
-    (
-      globalThis as typeof globalThis & {
-        __emitTauriEvent: (event: string) => void;
-      }
-    ).__emitTauriEvent("web-view-promoted"),
+  await page.evaluate(
+    (eventName) =>
+      (
+        globalThis as typeof globalThis & {
+          __emitTauriEvent: (event: string) => void;
+        }
+      ).__emitTauriEvent(eventName),
+    WEB_VIEW_PROMOTED_EVENT,
   );
 
   await expect(
@@ -517,19 +530,27 @@ test("demotion recreates the embedded view with its current session", async ({
   };
 
   await page.getByRole("button", { name: "Web View" }).click();
-  await page.evaluate(() =>
-    (
-      globalThis as typeof globalThis & {
-        __emitTauriEvent: (event: string) => void;
-      }
-    ).__emitTauriEvent("web-view-promoted"),
+  await page.evaluate(
+    (eventName) =>
+      (
+        globalThis as typeof globalThis & {
+          __emitTauriEvent: (event: string) => void;
+        }
+      ).__emitTauriEvent(eventName),
+    WEB_VIEW_PROMOTED_EVENT,
   );
-  await page.evaluate((payload) =>
-    (
-      globalThis as typeof globalThis & {
-        __emitTauriEvent: (event: string, payload: unknown) => void;
-      }
-    ).__emitTauriEvent("web-view-demoted", payload), session);
+  await page.evaluate(
+    ({ eventName, payload }) =>
+      (
+        globalThis as typeof globalThis & {
+          __emitTauriEvent: (event: string, payload: unknown) => void;
+        }
+      ).__emitTauriEvent(eventName, payload),
+    {
+      eventName: WEB_VIEW_DEMOTED_EVENT,
+      payload: session,
+    },
+  );
 
   await expect(page.getByTestId("web-view-slot")).toBeVisible();
   await expect

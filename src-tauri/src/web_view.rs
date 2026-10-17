@@ -25,6 +25,7 @@ const PROMOTED_EVENT: &str = "web-view-promoted";
 const DEMOTED_EVENT: &str = "web-view-demoted";
 /// Unlocks the local shell after the Academy finishes an authenticated page load.
 const AUTHENTICATED_EVENT: &str = "academy-authenticated";
+const AUTHENTICATION_ROUTES: &[&str] = &["sign_in", "login", "identity"];
 const MAIN_WINDOW_LABEL: &str = "main";
 const HOME_URL: &str = "https://academy.zerotomastery.io/";
 // The Academy root redirects signed-out users to ZTM's public marketing site,
@@ -44,6 +45,14 @@ fn init_script(view: &str, session: Option<&PageSession>, theme: WebTheme) -> St
         "window.__ZTM_DESKTOP_VIEW__ = {view:?};\n\
          window.__ZTM_DESKTOP_THEME__ = {theme:?};\n\
          window.__ZTM_DESKTOP_RESTORE__ = {session};\n{INIT_SCRIPT}"
+    )
+    .replace(
+        "__ZTM_AUTH_ROUTES__",
+        &serde_json::to_string(AUTHENTICATION_ROUTES).expect("auth routes serialize"),
+    )
+    .replace(
+        "__ZTM_THEME_STORAGE_KEY__",
+        &serde_json::to_string(THEME_STORAGE_KEY).expect("theme key serializes"),
     )
 }
 
@@ -225,10 +234,9 @@ fn is_authenticated_academy_url(url: &Url) -> bool {
     if url.scheme() != "https" || url.host_str() != Some("academy.zerotomastery.io") {
         return false;
     }
-    !matches!(
-        url.path_segments().and_then(|mut segments| segments.next()),
-        Some("sign_in" | "login" | "identity")
-    )
+    !url.path_segments()
+        .and_then(|mut segments| segments.next())
+        .is_some_and(|segment| AUTHENTICATION_ROUTES.contains(&segment))
 }
 
 fn report_authentication<R: Runtime>(app: &tauri::AppHandle<R>, event: PageLoadEvent, url: &Url) {
@@ -637,9 +645,22 @@ fn place<R: Runtime>(_webview: &Webview<R>, _bounds: Bounds) -> Result<(), Strin
 #[cfg(test)]
 mod tests {
     use super::{
-        FullscreenWindowLifecycle, WebTheme, course_url, is_academy_exit_navigation,
-        is_authenticated_academy_url, theme_update_script,
+        AUTHENTICATION_ROUTES, FullscreenWindowLifecycle, INIT_SCRIPT, THEME_STORAGE_KEY, WebTheme,
+        course_url, init_script, is_academy_exit_navigation, is_authenticated_academy_url,
+        theme_update_script,
     };
+
+    #[test]
+    fn academy_script_uses_rust_owned_auth_routes_and_theme_key() {
+        assert!(INIT_SCRIPT.contains("__ZTM_AUTH_ROUTES__"));
+        assert!(INIT_SCRIPT.contains("__ZTM_THEME_STORAGE_KEY__"));
+
+        let script = init_script("embedded", None, WebTheme::Light);
+        assert!(!script.contains("__ZTM_AUTH_ROUTES__"));
+        assert!(!script.contains("__ZTM_THEME_STORAGE_KEY__"));
+        assert!(script.contains(&serde_json::to_string(AUTHENTICATION_ROUTES).unwrap()));
+        assert!(script.contains(&serde_json::to_string(THEME_STORAGE_KEY).unwrap()));
+    }
 
     #[test]
     fn theme_reset_persists_the_new_value_before_reloading() {

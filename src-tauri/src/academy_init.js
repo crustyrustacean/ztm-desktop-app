@@ -1,6 +1,7 @@
 // Injected into every top-level ZTM page shown by the app. It runs before the page's
 // own scripts, so it must not assume that <head> or <body> exist yet.
 (() => {
+  const AUTHENTICATION_ROUTES = __ZTM_AUTH_ROUTES__;
   const MEDIA_STATE_MESSAGE = "ztm-desktop-media-state";
   const MEDIA_READY_MESSAGE = "ztm-desktop-media-ready";
   const MEDIA_RESTORE_MESSAGE = "ztm-desktop-media-restore";
@@ -12,7 +13,9 @@
   const isAuthenticationDocument =
     location.hostname === "sso.teachable.com" ||
     (/^academy\.zerotomastery\.io$/.test(location.hostname) &&
-      /(^|\/)(?:sign_in|login|identity)(?:\/|$)/.test(location.pathname));
+      AUTHENTICATION_ROUTES.includes(
+        location.pathname.split("/").filter(Boolean)[0],
+      ));
   if (isAuthenticationDocument) return;
 
   // The all-frame initialization script lets cross-origin player frames report
@@ -103,7 +106,7 @@
   const COURSE_BACK =
     'a.nav-icon-back[aria-label="Back to course curriculum"]';
   const STYLE_ID = "ztm-desktop-app-style";
-  const THEME_KEY = "ztm-desktop-app-theme";
+  const THEME_KEY = __ZTM_THEME_STORAGE_KEY__;
   const isFullscreenView = window.__ZTM_DESKTOP_VIEW__ === "fullscreen";
   function initialAppTheme() {
     try {

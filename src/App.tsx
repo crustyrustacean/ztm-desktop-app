@@ -25,6 +25,11 @@ import { useFavourites } from "@/hooks/use-favourites";
 import { useUserName } from "@/hooks/use-user-name";
 import { courseUrl, type Course } from "@/lib/course";
 import type { View } from "@/lib/view";
+import {
+  ACADEMY_AUTHENTICATED_EVENT,
+  WEB_VIEW_DEMOTED_EVENT,
+  WEB_VIEW_PROMOTED_EVENT,
+} from "@/lib/web-view-events";
 
 function App() {
   const desktop = isTauri();
@@ -63,8 +68,10 @@ function App() {
   useEffect(() => {
     if (!desktop) return;
     let cancelled = false;
-    const promoted = listen("web-view-promoted", () => selectView("dashboard"));
-    const demoted = listen<WebViewSession>("web-view-demoted", (event) => {
+    const promoted = listen(WEB_VIEW_PROMOTED_EVENT, () =>
+      selectView("dashboard"),
+    );
+    const demoted = listen<WebViewSession>(WEB_VIEW_DEMOTED_EVENT, (event) => {
       setWebViewRequest((previous) => ({
         url: event.payload.url,
         id: (previous?.id ?? 0) + 1,
@@ -72,7 +79,7 @@ function App() {
       }));
       selectView("web-view");
     });
-    const authenticated = listen("academy-authenticated", () => {
+    const authenticated = listen(ACADEMY_AUTHENTICATED_EVENT, () => {
       setAcademyAuthenticated(true);
       setSidebarOpen(true);
       setView("dashboard");

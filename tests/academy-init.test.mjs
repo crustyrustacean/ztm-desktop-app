@@ -2,11 +2,11 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 import vm from "node:vm";
+import {
+  academyInitScript as initScript,
+  themeStorageKey,
+} from "./academy-script.mjs";
 
-const initScript = readFileSync(
-  new URL("../src-tauri/src/academy_init.js", import.meta.url),
-  "utf8",
-);
 const defaultCapability = JSON.parse(
   readFileSync(
     new URL("../src-tauri/capabilities/default.json", import.meta.url),
@@ -209,7 +209,7 @@ test("a live theme change is retained for the webview reset reload", () => {
   runtime.window.__ZTM_DESKTOP_SET_THEME__("light");
 
   assert.equal(
-    runtime.window.sessionStorage.getItem("ztm-desktop-app-theme"),
+    runtime.window.sessionStorage.getItem(themeStorageKey),
     "light",
   );
 });

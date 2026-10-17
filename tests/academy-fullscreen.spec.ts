@@ -1,7 +1,6 @@
 import { expect, test, type Route } from "@playwright/test";
-import { readFileSync } from "node:fs";
+import { academyInitScript as academyInit } from "./academy-script.mjs";
 
-const academyInit = readFileSync("src-tauri/src/academy_init.js", "utf8");
 const lessonHeader = `
   <div class="jsx-2501835884 nav" style="padding: 0 0 0 60px">
     <a href="/" class="jsx-2501835884">
