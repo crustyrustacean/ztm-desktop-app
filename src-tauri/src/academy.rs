@@ -56,11 +56,7 @@ fn parse_courses(bytes: &[u8]) -> Result<Vec<Course>, String> {
             .map(str::to_owned)
     };
     let trusted_course_url = |record: &csv::StringRecord, column: Option<usize>| {
-        column
-            .and_then(|column| record.get(column))
-            .map(str::trim)
-            .filter(|url| crate::web_view::course_url(url).is_ok())
-            .map(str::to_owned)
+        https_url(record, column).filter(|url| crate::web_view::course_url(url).is_ok())
     };
 
     let mut courses = Vec::new();
