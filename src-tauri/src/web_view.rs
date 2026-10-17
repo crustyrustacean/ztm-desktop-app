@@ -5,11 +5,9 @@ use std::{
 
 use serde::{Deserialize, Serialize};
 use tauri::{
-    Emitter, Manager, Runtime, State, Url, Webview, WebviewUrl, WebviewWindowBuilder, Window,
-    WindowEvent, webview::PageLoadEvent,
+    Emitter, LogicalPosition, LogicalSize, Manager, Runtime, State, Url, Webview, WebviewBuilder,
+    WebviewUrl, WebviewWindowBuilder, Window, WindowEvent, webview::PageLoadEvent,
 };
-#[cfg(not(target_os = "linux"))]
-use tauri::{LogicalPosition, LogicalSize, WebviewBuilder};
 
 /// The child web view laid over the app's Web View slot.
 const LABEL: &str = "academy";
@@ -253,6 +251,7 @@ fn should_enhance_page(url: &Url) -> bool {
 
 #[cfg(any(target_os = "linux", test))]
 fn page_enhancement_script(
+    view: &str,
     event: PageLoadEvent,
     url: &Url,
     session: &mut Option<PageSession>,
@@ -261,7 +260,7 @@ fn page_enhancement_script(
     if event != PageLoadEvent::Finished || !should_enhance_page(url) {
         return None;
     }
-    let script = init_script("window", session.as_ref(), theme);
+    let script = init_script(view, session.as_ref(), theme);
     session.take();
     Some(script)
 }
@@ -326,13 +325,10 @@ pub async fn show_web_view<R: Runtime>(
     webview.show().map_err(|e| e.to_string())
 }
 
-/// Tauri's child-webview implementation is not usable on Linux: GTK packs child
-/// webviews into the window's layout container and ignores their requested bounds.
-/// Reparenting the WebKit widgets fixes the bounds but violates Wry's widget-tree
-/// assumptions and can abort the process on pointer input. Linux therefore uses
-/// the supported top-level course window. It starts without an initialization
-/// script so authentication remains compatible, then enhances trusted Academy
-/// documents after they finish loading.
+/// Linux keeps authentication in a plain top-level WebKitGTK window, but mounts
+/// signed-in Academy pages in the same child-webview slot used by other platforms.
+/// The child starts without a document-start script and is enhanced after load so
+/// it can share the authentication window's persistent WebKit data directory.
 #[cfg(target_os = "linux")]
 #[tauri::command]
 pub async fn show_web_view<R: Runtime>(
@@ -343,10 +339,86 @@ pub async fn show_web_view<R: Runtime>(
     auth_check: bool,
     theme: State<'_, WebViewTheme>,
 ) -> Result<(), String> {
-    let _ = bounds;
-    let url = course_url(url.as_deref().unwrap_or(LOGIN_URL))?;
+    destroy_fullscreen(window.app_handle())?;
+    if auth_check {
+        let url = course_url(url.as_deref().unwrap_or(LOGIN_URL))?;
+        let theme = *theme.0.lock().map_err(|e| e.to_string())?;
+        return show_course_window(window.app_handle(), url, session, theme, true);
+    }
+
+    *window
+        .state::<PendingCourseSession>()
+        .0
+        .lock()
+        .map_err(|e| e.to_string())? = session;
+    let url = url.as_deref().map(course_url).transpose()?;
+    let webview = match window.get_webview(LABEL) {
+        Some(webview) => {
+            if let Some(url) = url {
+                webview.navigate(url).map_err(|e| e.to_string())?;
+            }
+            webview
+        }
+        None => {
+            let url = match url {
+                Some(url) => url,
+                None => HOME_URL.parse().map_err(|e| format!("{e}"))?,
+            };
+            let enhancement_app = window.app_handle().clone();
+            let data_directory = window
+                .app_handle()
+                .path()
+                .app_data_dir()
+                .map_err(|error| error.to_string())?
+                .join(ACADEMY_DATA_DIR);
+            let builder = WebviewBuilder::new(LABEL, WebviewUrl::External(url))
+                .data_directory(data_directory)
+                .on_page_load(move |webview, payload| {
+                    if payload.event() != PageLoadEvent::Finished
+                        || !should_enhance_page(payload.url())
+                    {
+                        return;
+                    }
+                    let result = (|| {
+                        let theme = *enhancement_app
+                            .state::<WebViewTheme>()
+                            .0
+                            .lock()
+                            .map_err(|error| error.to_string())?;
+                        let script = {
+                            let pending = enhancement_app.state::<PendingCourseSession>();
+                            let mut session =
+                                pending.0.lock().map_err(|error| error.to_string())?;
+                            page_enhancement_script(
+                                "embedded",
+                                payload.event(),
+                                payload.url(),
+                                &mut session,
+                                theme,
+                            )
+                        };
+                        if let Some(script) = script {
+                            webview.eval(script).map_err(|error| error.to_string())?;
+                        }
+                        Ok::<_, String>(())
+                    })();
+                    if let Err(error) = result {
+                        eprintln!("failed to enhance embedded Linux Academy page: {error}");
+                    }
+                });
+            window
+                .add_child(
+                    builder,
+                    LogicalPosition::new(bounds.x, bounds.y),
+                    LogicalSize::new(bounds.width, bounds.height),
+                )
+                .map_err(|e| e.to_string())?
+        }
+    };
     let theme = *theme.0.lock().map_err(|e| e.to_string())?;
-    show_course_window(window.app_handle(), url, session, theme, auth_check)
+    set_webview_native_theme(&webview, theme)?;
+    place(&webview, bounds)?;
+    webview.show().map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -426,7 +498,13 @@ fn show_course_window<R: Runtime>(
                     let script = {
                         let pending = enhancement_app.state::<PendingCourseSession>();
                         let mut session = pending.0.lock().map_err(|error| error.to_string())?;
-                        page_enhancement_script(payload.event(), payload.url(), &mut session, theme)
+                        page_enhancement_script(
+                            "window",
+                            payload.event(),
+                            payload.url(),
+                            &mut session,
+                            theme,
+                        )
                     };
                     if let Some(script) = script {
                         window.eval(script).map_err(|error| error.to_string())?;
@@ -696,17 +774,11 @@ pub fn set_web_view_theme<R: Runtime>(
     Ok(())
 }
 
-#[cfg(not(target_os = "linux"))]
 fn place<R: Runtime>(webview: &Webview<R>, bounds: Bounds) -> Result<(), String> {
     webview
         .set_position(LogicalPosition::new(bounds.x, bounds.y))
         .and_then(|_| webview.set_size(LogicalSize::new(bounds.width, bounds.height)))
         .map_err(|e| e.to_string())
-}
-
-#[cfg(target_os = "linux")]
-fn place<R: Runtime>(_webview: &Webview<R>, _bounds: Bounds) -> Result<(), String> {
-    Ok(())
 }
 
 #[cfg(test)]
@@ -842,6 +914,7 @@ mod tests {
 
         assert!(
             page_enhancement_script(
+                "window",
                 PageLoadEvent::Started,
                 &course,
                 &mut session,
@@ -850,12 +923,19 @@ mod tests {
             .is_none()
         );
         assert!(
-            page_enhancement_script(PageLoadEvent::Finished, &auth, &mut session, WebTheme::Dark)
-                .is_none()
+            page_enhancement_script(
+                "window",
+                PageLoadEvent::Finished,
+                &auth,
+                &mut session,
+                WebTheme::Dark
+            )
+            .is_none()
         );
         assert!(session.is_some());
 
         let first = page_enhancement_script(
+            "embedded",
             PageLoadEvent::Finished,
             &course,
             &mut session,
@@ -863,10 +943,12 @@ mod tests {
         )
         .unwrap();
         assert!(first.contains("window.__ZTM_DESKTOP_THEME__ = \"dark\""));
+        assert!(first.contains("window.__ZTM_DESKTOP_VIEW__ = \"embedded\""));
         assert!(first.contains(course.as_str()));
         assert!(session.is_none());
 
         let later = page_enhancement_script(
+            "embedded",
             PageLoadEvent::Finished,
             &course,
             &mut session,
