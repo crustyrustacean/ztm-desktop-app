@@ -64,6 +64,7 @@ test.beforeEach(async ({ page }) => {
         async invoke(command: string, args: Record<string, unknown> = {}) {
           calls.push({ command, args });
           if (rejectedCommands.has(command)) {
+            rejectedCommands.delete(command);
             throw new Error(`${command} rejected for test`);
           }
           if (command === "load_state") return {};
@@ -315,6 +316,27 @@ test("a failed webview open is reported in the Web View area", async ({
   await expect(
     page.getByRole("alert").getByText("Could not open the Web View."),
   ).toBeVisible();
+});
+
+test("the Web View error clears after a successful retry", async ({ page }) => {
+  await page.evaluate(() =>
+    (
+      globalThis as typeof globalThis & {
+        __rejectTauriCommand: (command: string) => void;
+      }
+    ).__rejectTauriCommand("show_web_view"),
+  );
+  await page.getByRole("button", { name: "Web View" }).click();
+  await expect(
+    page.getByRole("alert").getByText("Could not open the Web View."),
+  ).toBeVisible();
+
+  await page
+    .getByRole("button", { name: "Dashboard", exact: true })
+    .click();
+  await page.getByRole("button", { name: "Web View" }).click();
+
+  await expect(page.getByRole("alert")).toBeHidden();
 });
 
 test("entering Web View from the sidebar collapses the app sidebar", async ({
