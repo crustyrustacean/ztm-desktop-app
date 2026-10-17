@@ -55,6 +55,13 @@ fn parse_courses(bytes: &[u8]) -> Result<Vec<Course>, String> {
             .filter(|url| url.starts_with("https://"))
             .map(str::to_owned)
     };
+    let trusted_course_url = |record: &csv::StringRecord, column: Option<usize>| {
+        column
+            .and_then(|column| record.get(column))
+            .map(str::trim)
+            .filter(|url| crate::web_view::course_url(url).is_ok())
+            .map(str::to_owned)
+    };
 
     let mut courses = Vec::new();
     for record in reader.records() {
@@ -71,8 +78,8 @@ fn parse_courses(bytes: &[u8]) -> Result<Vec<Course>, String> {
             uuid: uuid.to_owned(),
             name: name.to_owned(),
             image_url: https_url(&record, image_column),
-            enrolled_url: https_url(&record, enrolled_column),
-            public_url: https_url(&record, public_column),
+            enrolled_url: trusted_course_url(&record, enrolled_column),
+            public_url: trusted_course_url(&record, public_column),
         });
     }
 
@@ -359,8 +366,8 @@ mod tests {
     }
 
     #[test]
-    fn parses_optional_https_course_urls() {
-        let bytes = b"uuid,course_name,enrolled_url,public_url\na1,Rust,https://academy.zerotomastery.io/courses/enrolled/1,\nb2,Go, ,https://zerotomastery.io/courses/go/\nc3,C,http://example.com,javascript:alert(1)\n";
+    fn parses_only_trusted_https_course_urls() {
+        let bytes = b"uuid,course_name,enrolled_url,public_url\na1,Rust,https://academy.zerotomastery.io/courses/enrolled/1,\nb2,Go, ,https://zerotomastery.io/courses/go/\nc3,C,http://example.com,javascript:alert(1)\nd4,Python,https://example.com/python,\n";
         let urls: Vec<_> = parse_courses(bytes)
             .unwrap()
             .into_iter()
@@ -374,6 +381,7 @@ mod tests {
                     None
                 ),
                 (None, Some("https://zerotomastery.io/courses/go/".into())),
+                (None, None),
                 (None, None),
             ]
         );

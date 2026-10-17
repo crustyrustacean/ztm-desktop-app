@@ -197,7 +197,7 @@ impl FullscreenWindowLifecycle {
 }
 
 /// Only https pages on zerotomastery.io may be opened in the app's web views.
-fn course_url(url: &str) -> Result<Url, String> {
+pub(crate) fn course_url(url: &str) -> Result<Url, String> {
     let url = Url::parse(url).map_err(|error| format!("Invalid course URL: {error}"))?;
     let host = url.host_str().unwrap_or_default();
     let trusted = host == "zerotomastery.io" || host.ends_with(".zerotomastery.io");
