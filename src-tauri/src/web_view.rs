@@ -234,9 +234,11 @@ fn is_authenticated_academy_url(url: &Url) -> bool {
     if url.scheme() != "https" || url.host_str() != Some("academy.zerotomastery.io") {
         return false;
     }
-    !url.path_segments()
-        .and_then(|mut segments| segments.next())
-        .is_some_and(|segment| AUTHENTICATION_ROUTES.contains(&segment))
+    !url.path_segments().is_some_and(|segments| {
+        segments
+            .filter(|segment| !segment.is_empty())
+            .any(|segment| AUTHENTICATION_ROUTES.contains(&segment))
+    })
 }
 
 fn report_authentication<R: Runtime>(app: &tauri::AppHandle<R>, event: PageLoadEvent, url: &Url) {
@@ -713,7 +715,7 @@ mod tests {
     #[test]
     fn recognizes_only_completed_academy_destinations_as_authenticated() {
         for url in [
-            "https://academy.zerotomastery.io/",
+            "https://academy.zerotomastery.io/courses/identity-theory",
             "https://academy.zerotomastery.io/courses/enrolled/697434",
         ] {
             assert!(is_authenticated_academy_url(&url.parse().unwrap()), "{url}");
@@ -721,6 +723,7 @@ mod tests {
         for url in [
             "https://zerotomastery.io/academy/",
             "https://academy.zerotomastery.io/sign_in",
+            "https://academy.zerotomastery.io/users/sign_in",
             "https://sso.teachable.com/secure/441520/identity/login/otp",
             "http://academy.zerotomastery.io/",
             "https://example.com/",

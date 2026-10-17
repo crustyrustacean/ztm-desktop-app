@@ -37,9 +37,10 @@
   const isAuthenticationDocument =
     location.hostname === "sso.teachable.com" ||
     (/^academy\.zerotomastery\.io$/.test(location.hostname) &&
-      AUTHENTICATION_ROUTES.includes(
-        location.pathname.split("/").filter(Boolean)[0],
-      ));
+      location.pathname
+        .split("/")
+        .filter(Boolean)
+        .some((segment) => AUTHENTICATION_ROUTES.includes(segment)));
   if (isAuthenticationDocument) return;
 
   // The all-frame initialization script lets cross-origin player frames report

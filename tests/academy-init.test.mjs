@@ -230,10 +230,13 @@ test("palette normalization includes the Academy dashboard and categories", () =
 });
 
 test("authentication pages are left untouched", () => {
-  for (const url of [
-    "https://academy.zerotomastery.io/sign_in",
-    "https://sso.teachable.com/secure/123/identity/login/password",
+  for (const [path, authentication] of [
+    ["/sign_in", true],
+    ["/users/sign_in", true],
+    ["/courses/identity-theory", false],
+    ["/courses/enrolled/697434", false],
   ]) {
+    const url = `https://academy.zerotomastery.io${path}`;
     const runtime = runAcademyScript(
       "window",
       null,
@@ -247,10 +250,26 @@ test("authentication pages are left untouched", () => {
       url,
     );
 
-    assert.equal(runtime.styles.size, 0, url);
-    assert.equal(runtime.documentListeners.size, 0, url);
-    assert.equal(runtime.windowListeners.size, 0, url);
+    assert.equal(runtime.styles.size === 0, authentication, url);
+    assert.equal(runtime.documentListeners.size === 0, authentication, url);
+    assert.equal(runtime.windowListeners.size === 0, authentication, url);
   }
+
+  const teachable = runAcademyScript(
+    "window",
+    null,
+    [],
+    true,
+    [],
+    "dark",
+    [],
+    [],
+    [],
+    "https://sso.teachable.com/secure/123/identity/login/password",
+  );
+  assert.equal(teachable.styles.size, 0);
+  assert.equal(teachable.documentListeners.size, 0);
+  assert.equal(teachable.windowListeners.size, 0);
 });
 
 test("the Academy lesson header cannot navigate home before it is hidden", () => {
