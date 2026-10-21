@@ -38,6 +38,8 @@ export function useShortcuts(
       const handler = handlersRef.current[event.code];
       if (!handler) return;
       event.preventDefault();
+      // Holding the keys repeats keydown, which would open Discord over and over.
+      if (event.repeat) return;
       hide();
       handler();
     };
