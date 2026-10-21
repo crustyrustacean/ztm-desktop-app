@@ -11,6 +11,7 @@ export type AppState = {
   academyMember?: boolean | null;
   courseOpenMode?: CourseOpenMode | null;
   shortcutModifier?: ShortcutModifier | null;
+  lastCourse?: string | null;
 };
 
 export async function loadState(): Promise<AppState> {
