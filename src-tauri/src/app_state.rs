@@ -23,6 +23,15 @@ pub enum CourseOpenMode {
     Window,
 }
 
+/// Key held to show and trigger keyboard shortcuts.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ShortcutModifier {
+    Alt,
+    Ctrl,
+    Meta,
+}
+
 /// User choices persisted across launches. Unset fields fall back to defaults in the UI.
 #[derive(Debug, Default, PartialEq, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
@@ -36,6 +45,8 @@ pub struct AppState {
     academy_member: Option<bool>,
     /// Where courses open. Unset means embedded in the Web View slot.
     course_open_mode: Option<CourseOpenMode>,
+    /// Key held for keyboard shortcuts. Unset means Alt.
+    shortcut_modifier: Option<ShortcutModifier>,
 }
 
 fn state_path(app: &tauri::AppHandle) -> Result<PathBuf, String> {
@@ -98,12 +109,13 @@ mod tests {
             name: Some("Mark".into()),
             academy_member: Some(false),
             course_open_mode: Some(CourseOpenMode::Window),
+            shortcut_modifier: Some(ShortcutModifier::Ctrl),
         };
         write_state(&path, &state).unwrap();
         assert_eq!(read_state(&path), state);
         assert_eq!(
             serde_json::from_slice::<serde_json::Value>(&fs::read(&path).unwrap()).unwrap(),
-            serde_json::json!({ "theme": "dark", "favourites": ["39fcbbb8"], "name": "Mark", "academyMember": false, "courseOpenMode": "window" })
+            serde_json::json!({ "theme": "dark", "favourites": ["39fcbbb8"], "name": "Mark", "academyMember": false, "courseOpenMode": "window", "shortcutModifier": "ctrl" })
         );
     }
 

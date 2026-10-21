@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { SearchIcon } from "lucide-react";
@@ -11,6 +11,7 @@ import {
   InputGroupAddon,
   InputGroupInput,
 } from "@/components/ui/input-group";
+import { Kbd } from "@/components/ui/kbd";
 import {
   WebView,
   type WebViewRequest,
@@ -22,8 +23,11 @@ import { useAcademyMember } from "@/hooks/use-academy-member";
 import { useCourseOpenMode } from "@/hooks/use-course-open-mode";
 import { useCourses } from "@/hooks/use-courses";
 import { useFavourites } from "@/hooks/use-favourites";
+import { useShortcutModifier } from "@/hooks/use-shortcut-modifier";
+import { useShortcuts } from "@/hooks/use-shortcuts";
 import { useUserName } from "@/hooks/use-user-name";
 import { courseUrl, type Course } from "@/lib/course";
+import { openDiscord } from "@/lib/discord";
 import type { View } from "@/lib/view";
 import {
   ACADEMY_AUTHENTICATED_EVENT,
@@ -45,6 +49,9 @@ function App() {
   const { name, setName } = useUserName();
   const { academyMember, setAcademyMember } = useAcademyMember();
   const { courseOpenMode, setCourseOpenMode } = useCourseOpenMode();
+  const { shortcutModifier, setShortcutModifier } = useShortcutModifier();
+  const filterRef = useRef<HTMLInputElement>(null);
+  const hasFilter = view === "dashboard" || view === "favourites";
   const [webViewRequest, setWebViewRequest] = useState<WebViewRequest | null>(
     null,
   );
@@ -64,6 +71,27 @@ function App() {
     if (nextView === "web-view") setSidebarOpen(false);
     setView(nextView);
   }, []);
+
+  function focusFilter() {
+    if (!hasFilter) selectView("dashboard");
+    // The filter only mounts once the view has a filter, so wait for that render.
+    requestAnimationFrame(() => filterRef.current?.focus());
+  }
+
+  // Shortcuts stay off on the sign-in screen, where there is no sidebar to jump around.
+  const showHints = useShortcuts(
+    shortcutModifier,
+    academyAuthenticated
+      ? {
+          Digit1: () => selectView("dashboard"),
+          Digit2: () => selectView("favourites"),
+          Digit3: () => selectView("web-view"),
+          Digit4: () => selectView("options"),
+          Digit5: openDiscord,
+          KeyS: focusFilter,
+        }
+      : {},
+  );
 
   useEffect(() => {
     if (!desktop) return;
@@ -145,13 +173,15 @@ function App() {
           view={view}
           onViewChange={selectView}
           onTooltipOpenChange={handleSidebarTooltipOpenChange}
+          showHints={showHints}
         />
         <div className="min-w-0 flex-1">
           <header className="flex h-14 items-center border-b px-4">
             <SidebarTrigger />
-            {(view === "dashboard" || view === "favourites") && (
+            {hasFilter && (
               <InputGroup className="ml-2 h-10">
                 <InputGroupInput
+                  ref={filterRef}
                   type="search"
                   aria-label="Filter courses"
                   placeholder="Filter courses..."
@@ -161,6 +191,11 @@ function App() {
                 <InputGroupAddon>
                   <SearchIcon />
                 </InputGroupAddon>
+                {showHints && (
+                  <InputGroupAddon align="inline-end">
+                    <Kbd className="border bg-background text-foreground">S</Kbd>
+                  </InputGroupAddon>
+                )}
               </InputGroup>
             )}
           </header>
@@ -204,6 +239,8 @@ function App() {
               onAcademyMemberChange={setAcademyMember}
               courseOpenMode={courseOpenMode}
               onCourseOpenModeChange={setCourseOpenMode}
+              shortcutModifier={shortcutModifier}
+              onShortcutModifierChange={setShortcutModifier}
             />
           </div>
         </div>
