@@ -1,4 +1,6 @@
-import { useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { invoke, isTauri } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import { SearchIcon } from "lucide-react";
 import Dashboard from "./pages/Dashboard";
 import Favourites from "./pages/Favourites";
@@ -9,49 +11,170 @@ import {
   InputGroupAddon,
   InputGroupInput,
 } from "@/components/ui/input-group";
-import { WebView } from "@/components/web-view";
 import { Kbd } from "@/components/ui/kbd";
+import {
+  WebView,
+  type WebViewRequest,
+  type WebViewSession,
+} from "@/components/web-view";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { useAcademyMember } from "@/hooks/use-academy-member";
+import { useCourseOpenMode } from "@/hooks/use-course-open-mode";
 import { useCourses } from "@/hooks/use-courses";
 import { useFavourites } from "@/hooks/use-favourites";
 import { useShortcutModifier } from "@/hooks/use-shortcut-modifier";
 import { useShortcuts } from "@/hooks/use-shortcuts";
 import { useUserName } from "@/hooks/use-user-name";
+import { courseUrl, type Course } from "@/lib/course";
 import { openDiscord } from "@/lib/discord";
 import type { View } from "@/lib/view";
+import {
+  ACADEMY_AUTHENTICATED_EVENT,
+  WEB_VIEW_DEMOTED_EVENT,
+  WEB_VIEW_PROMOTED_EVENT,
+} from "@/lib/web-view-events";
 
 function App() {
+  const desktop = isTauri();
   const [query, setQuery] = useState("");
-  const [view, setView] = useState<View>("dashboard");
+  const [academyAuthenticated, setAcademyAuthenticated] = useState(!desktop);
+  const [authenticationReady, setAuthenticationReady] = useState(!desktop);
+  const [view, setView] = useState<View>(
+    desktop ? "web-view" : "dashboard",
+  );
+  const [sidebarOpen, setSidebarOpen] = useState(true);
   const { courses, syncing, error, retry } = useCourses();
   const { favourites, toggleFavourite } = useFavourites();
   const { name, setName } = useUserName();
   const { academyMember, setAcademyMember } = useAcademyMember();
+  const { courseOpenMode, setCourseOpenMode } = useCourseOpenMode();
   const { shortcutModifier, setShortcutModifier } = useShortcutModifier();
   const filterRef = useRef<HTMLInputElement>(null);
   const hasFilter = view === "dashboard" || view === "favourites";
+  const [webViewRequest, setWebViewRequest] = useState<WebViewRequest | null>(
+    null,
+  );
+  const [activeSidebarTooltip, setActiveSidebarTooltip] = useState<
+    string | null
+  >(null);
+  const handleSidebarTooltipOpenChange = useCallback(
+    (tooltip: string, open: boolean) => {
+      setActiveSidebarTooltip((active) => {
+        if (open) return tooltip;
+        return active === tooltip ? null : active;
+      });
+    },
+    [],
+  );
+  const selectView = useCallback((nextView: View) => {
+    if (nextView === "web-view") setSidebarOpen(false);
+    setView(nextView);
+  }, []);
 
   function focusFilter() {
-    if (!hasFilter) setView("dashboard");
+    if (!hasFilter) selectView("dashboard");
     // The filter only mounts once the view has a filter, so wait for that render.
     requestAnimationFrame(() => filterRef.current?.focus());
   }
 
-  const showHints = useShortcuts(shortcutModifier, {
-    Digit1: () => setView("dashboard"),
-    Digit2: () => setView("favourites"),
-    Digit3: () => setView("web-view"),
-    Digit4: () => setView("options"),
-    Digit5: openDiscord,
-    KeyS: focusFilter,
-  });
+  // Shortcuts stay off on the sign-in screen, where there is no sidebar to jump around.
+  const showHints = useShortcuts(
+    shortcutModifier,
+    academyAuthenticated
+      ? {
+          Digit1: () => selectView("dashboard"),
+          Digit2: () => selectView("favourites"),
+          Digit3: () => selectView("web-view"),
+          Digit4: () => selectView("options"),
+          Digit5: openDiscord,
+          KeyS: focusFilter,
+        }
+      : {},
+  );
+
+  useEffect(() => {
+    if (!desktop) return;
+    let cancelled = false;
+    const promoted = listen(WEB_VIEW_PROMOTED_EVENT, () =>
+      selectView("dashboard"),
+    );
+    const demoted = listen<WebViewSession>(WEB_VIEW_DEMOTED_EVENT, (event) => {
+      setWebViewRequest((previous) => ({
+        url: event.payload.url,
+        id: (previous?.id ?? 0) + 1,
+        session: event.payload,
+      }));
+      selectView("web-view");
+    });
+    const authenticated = listen(ACADEMY_AUTHENTICATED_EVENT, () => {
+      setAcademyAuthenticated(true);
+      setSidebarOpen(true);
+      setView("dashboard");
+    });
+    Promise.all([promoted, demoted, authenticated]).then(() => {
+      if (!cancelled) setAuthenticationReady(true);
+    });
+    return () => {
+      cancelled = true;
+      promoted.then((stop) => stop());
+      demoted.then((stop) => stop());
+      authenticated.then((stop) => stop());
+    };
+  }, [desktop, selectView]);
+
+  const canOpenCourse = useCallback(
+    (course: Course) => courseUrl(course, academyMember) !== null,
+    [academyMember],
+  );
+
+  const openCourse = useCallback(
+    (course: Course) => {
+      const url = courseUrl(course, academyMember);
+      if (!url) return;
+      const openEmbedded = () => {
+        setWebViewRequest((previous) => ({ url, id: (previous?.id ?? 0) + 1 }));
+        selectView("web-view");
+      };
+      if (courseOpenMode === "window" && isTauri()) {
+        // If the window can't open, show the course in the app rather than nowhere.
+        invoke("open_course_window", { url }).catch((error) => {
+          console.error("Could not open course window", error);
+          openEmbedded();
+        });
+        return;
+      }
+      openEmbedded();
+    },
+    [academyMember, courseOpenMode, selectView],
+  );
+
+  if (!academyAuthenticated) {
+    return (
+      <main className="min-h-svh bg-background text-foreground">
+        <header className="flex h-14 items-center border-b px-4">
+          <h1 className="text-sm font-medium">Sign in to ZTM Academy</h1>
+        </header>
+        {authenticationReady ? (
+          <WebView active request={null} authCheck />
+        ) : (
+          <p className="p-4 text-sm text-muted-foreground">
+            Checking your Academy session…
+          </p>
+        )}
+      </main>
+    );
+  }
 
   return (
     <TooltipProvider>
-      <SidebarProvider>
-        <AppSidebar view={view} onViewChange={setView} showHints={showHints} />
+      <SidebarProvider open={sidebarOpen} onOpenChange={setSidebarOpen}>
+        <AppSidebar
+          view={view}
+          onViewChange={selectView}
+          onTooltipOpenChange={handleSidebarTooltipOpenChange}
+          showHints={showHints}
+        />
         <div className="min-w-0 flex-1">
           <header className="flex h-14 items-center border-b px-4">
             <SidebarTrigger />
@@ -87,6 +210,8 @@ function App() {
               onRetry={retry}
               favourites={favourites}
               onToggleFavourite={toggleFavourite}
+              onOpenCourse={openCourse}
+              canOpenCourse={canOpenCourse}
             />
           </div>
           <div id="favourites" hidden={view !== "favourites"}>
@@ -95,10 +220,16 @@ function App() {
               courses={courses}
               favourites={favourites}
               onToggleFavourite={toggleFavourite}
+              onOpenCourse={openCourse}
+              canOpenCourse={canOpenCourse}
             />
           </div>
           <div id="web-view" hidden={view !== "web-view"}>
-            <WebView active={view === "web-view"} />
+            <WebView
+              active={view === "web-view"}
+              request={webViewRequest}
+              sidebarTooltipOpen={activeSidebarTooltip !== null}
+            />
           </div>
           <div id="options" hidden={view !== "options"}>
             <Options
@@ -106,6 +237,8 @@ function App() {
               onNameChange={setName}
               academyMember={academyMember}
               onAcademyMemberChange={setAcademyMember}
+              courseOpenMode={courseOpenMode}
+              onCourseOpenModeChange={setCourseOpenMode}
               shortcutModifier={shortcutModifier}
               onShortcutModifierChange={setShortcutModifier}
             />

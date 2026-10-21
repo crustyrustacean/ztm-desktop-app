@@ -1,4 +1,5 @@
 import { invoke, isTauri } from "@tauri-apps/api/core";
+import type { CourseOpenMode } from "@/lib/course";
 import type { ShortcutModifier } from "@/lib/shortcuts";
 import type { Theme } from "@/lib/theme";
 
@@ -8,6 +9,7 @@ export type AppState = {
   favourites?: string[];
   name?: string | null;
   academyMember?: boolean | null;
+  courseOpenMode?: CourseOpenMode | null;
   shortcutModifier?: ShortcutModifier | null;
 };
 

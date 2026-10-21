@@ -6,6 +6,8 @@ type FavouritesProps = {
   courses: Course[];
   favourites: ReadonlySet<string>;
   onToggleFavourite: (uuid: string) => void;
+  onOpenCourse: (course: Course) => void;
+  canOpenCourse: (course: Course) => boolean;
 };
 
 function Favourites({
@@ -13,6 +15,8 @@ function Favourites({
   courses,
   favourites,
   onToggleFavourite,
+  onOpenCourse,
+  canOpenCourse,
 }: FavouritesProps) {
   const favouriteCourses = courses.filter((course) =>
     favourites.has(course.uuid),
@@ -41,6 +45,8 @@ function Favourites({
           courses={visibleCourses}
           favourites={favourites}
           onToggleFavourite={onToggleFavourite}
+          onOpenCourse={onOpenCourse}
+          canOpenCourse={canOpenCourse}
           labelledBy="favourites-heading"
         />
       )}

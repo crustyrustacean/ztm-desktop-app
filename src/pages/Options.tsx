@@ -4,13 +4,17 @@ import {
   FieldContent,
   FieldDescription,
   FieldLabel,
+  FieldLegend,
+  FieldSet,
 } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import {
   NativeSelect,
   NativeSelectOption,
 } from "@/components/ui/native-select";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Switch } from "@/components/ui/switch";
+import type { CourseOpenMode } from "@/lib/course";
 import {
   SHORTCUT_MODIFIER_LABELS,
   type ShortcutModifier,
@@ -22,6 +26,8 @@ type OptionsProps = {
   onNameChange: (name: string) => void;
   academyMember: boolean;
   onAcademyMemberChange: (academyMember: boolean) => void;
+  courseOpenMode: CourseOpenMode;
+  onCourseOpenModeChange: (courseOpenMode: CourseOpenMode) => void;
   shortcutModifier: ShortcutModifier;
   onShortcutModifierChange: (shortcutModifier: ShortcutModifier) => void;
 };
@@ -31,6 +37,8 @@ export default function Options({
   onNameChange,
   academyMember,
   onAcademyMemberChange,
+  courseOpenMode,
+  onCourseOpenModeChange,
   shortcutModifier,
   onShortcutModifierChange,
 }: OptionsProps) {
@@ -41,7 +49,7 @@ export default function Options({
   function handleThemeChange(checked: boolean) {
     const next: Theme = checked ? "dark" : "light";
     setTheme(next);
-    applyTheme(next);
+    void applyTheme(next, true);
     saveTheme(next).catch((error) =>
       console.error("Could not save theme", error),
     );
@@ -76,6 +84,35 @@ export default function Options({
           onCheckedChange={onAcademyMemberChange}
         />
       </Field>
+      <FieldSet>
+        <FieldLegend variant="label">Open courses in</FieldLegend>
+        <RadioGroup
+          value={courseOpenMode}
+          onValueChange={(value) =>
+            onCourseOpenModeChange(value as CourseOpenMode)
+          }
+        >
+          <Field orientation="horizontal">
+            <RadioGroupItem value="embedded" id="open-embedded" />
+            <FieldContent>
+              <FieldLabel htmlFor="open-embedded">The app (default)</FieldLabel>
+              <FieldDescription>
+                Courses load in the Web View, next to the app's sidebar. Linux
+                opens courses in a separate window.
+              </FieldDescription>
+            </FieldContent>
+          </Field>
+          <Field orientation="horizontal">
+            <RadioGroupItem value="window" id="open-window" />
+            <FieldContent>
+              <FieldLabel htmlFor="open-window">A separate window</FieldLabel>
+              <FieldDescription>
+                Courses open in their own window you can move or resize.
+              </FieldDescription>
+            </FieldContent>
+          </Field>
+        </RadioGroup>
+      </FieldSet>
       <Field orientation="horizontal">
         <FieldContent>
           <FieldLabel htmlFor="dark-mode">Dark mode</FieldLabel>

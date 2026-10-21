@@ -1,4 +1,5 @@
 import { loadState, updateState } from "@/lib/app-state";
+import { invoke, isTauri } from "@tauri-apps/api/core";
 
 export type Theme = "light" | "dark";
 
@@ -19,8 +20,15 @@ export async function loadTheme(): Promise<Theme> {
   }
 }
 
-export function applyTheme(theme: Theme) {
+export async function applyTheme(theme: Theme, resetWebView = false) {
   document.documentElement.classList.toggle("dark", theme === "dark");
+  document.documentElement.classList.toggle("scheme-dark", theme === "dark");
+  document.documentElement.classList.toggle("scheme-light", theme === "light");
+  if (isTauri()) {
+    await invoke("set_web_view_theme", { theme, reset: resetWebView }).catch((error) =>
+      console.error("Could not apply theme to Academy views", error),
+    );
+  }
 }
 
 export function saveTheme(theme: Theme) {

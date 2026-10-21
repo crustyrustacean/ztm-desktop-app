@@ -502,12 +502,14 @@ function SidebarMenuButton({
   variant = "default",
   size = "default",
   tooltip,
+  onTooltipOpenChange,
   className,
   ...props
 }: useRender.ComponentProps<"button"> &
   React.ComponentProps<"button"> & {
     isActive?: boolean
     tooltip?: string | React.ComponentProps<typeof TooltipContent>
+    onTooltipOpenChange?: (open: boolean) => void
   } & VariantProps<typeof sidebarMenuButtonVariants>) {
   const { isMobile, state } = useSidebar()
   const comp = useRender({
@@ -538,7 +540,13 @@ function SidebarMenuButton({
   }
 
   return (
-    <Tooltip>
+    <Tooltip
+      onOpenChange={(open) => {
+        if (state === "collapsed" && !isMobile) {
+          onTooltipOpenChange?.(open)
+        }
+      }}
+    >
       {comp}
       <TooltipContent
         side="right"

@@ -18,26 +18,67 @@ type MenuItem = {
   icon: ComponentType;
   /** Shortcut key shown in the hint badge; matches the `Digit` codes in App.tsx. */
   shortcut: string;
+  /** Identifies the item to `onTooltipOpenChange`. */
+  tooltip: string;
   view?: View;
   onClick?: () => void;
 };
 
 const menuItems: MenuItem[] = [
-  { label: "Dashboard", icon: LayoutDashboard, shortcut: "1", view: "dashboard" },
-  { label: "Favourites", icon: Star, shortcut: "2", view: "favourites" },
-  { label: "Web View", icon: Globe, shortcut: "3", view: "web-view" },
-  { label: "Options", icon: Settings, shortcut: "4", view: "options" },
-  { label: "Discord", icon: SiDiscord, shortcut: "5", onClick: openDiscord },
+  {
+    label: "Dashboard",
+    icon: LayoutDashboard,
+    shortcut: "1",
+    tooltip: "dashboard",
+    view: "dashboard",
+  },
+  {
+    label: "Favourites",
+    icon: Star,
+    shortcut: "2",
+    tooltip: "favourites",
+    view: "favourites",
+  },
+  {
+    label: "Web View",
+    icon: Globe,
+    shortcut: "3",
+    tooltip: "web-view",
+    view: "web-view",
+  },
+  {
+    label: "Options",
+    icon: Settings,
+    shortcut: "4",
+    tooltip: "options",
+    view: "options",
+  },
+  {
+    label: "Discord",
+    icon: SiDiscord,
+    shortcut: "5",
+    tooltip: "discord",
+    onClick: openDiscord,
+  },
 ];
 
 type AppSidebarProps = {
   view: View;
   onViewChange: (view: View) => void;
+  onTooltipOpenChange?: (tooltip: string, open: boolean) => void;
   /** Show each item's shortcut key while the shortcut modifier is held. */
   showHints: boolean;
 };
 
-export function AppSidebar({ view, onViewChange, showHints }: AppSidebarProps) {
+export function AppSidebar({
+  view,
+  onViewChange,
+  onTooltipOpenChange,
+  showHints,
+}: AppSidebarProps) {
+  const handleTooltipOpenChange = (tooltip: string) => (open: boolean) =>
+    onTooltipOpenChange?.(tooltip, open);
+
   return (
     <Sidebar collapsible="icon">
       <SidebarContent>
@@ -54,6 +95,7 @@ export function AppSidebar({ view, onViewChange, showHints }: AppSidebarProps) {
                     isActive={isActive}
                     aria-current={isActive ? "page" : undefined}
                     tooltip={item.label}
+                    onTooltipOpenChange={handleTooltipOpenChange(item.tooltip)}
                   >
                     <item.icon />
                     <span>{item.label}</span>
