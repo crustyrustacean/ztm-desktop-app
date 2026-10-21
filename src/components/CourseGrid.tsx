@@ -5,6 +5,9 @@ type CourseGridProps = {
   courses: Course[];
   favourites: ReadonlySet<string>;
   onToggleFavourite: (uuid: string) => void;
+  /** Called with the course to open; courses without a page are not openable. */
+  onOpenCourse: (course: Course) => void;
+  canOpenCourse: (course: Course) => boolean;
   labelledBy: string;
 };
 
@@ -12,6 +15,8 @@ function CourseGrid({
   courses,
   favourites,
   onToggleFavourite,
+  onOpenCourse,
+  canOpenCourse,
   labelledBy,
 }: CourseGridProps) {
   return (
@@ -26,6 +31,9 @@ function CourseGrid({
             imageUrl={course.imageUrl}
             favourite={favourites.has(course.uuid)}
             onToggleFavourite={() => onToggleFavourite(course.uuid)}
+            onOpen={
+              canOpenCourse(course) ? () => onOpenCourse(course) : undefined
+            }
           />
         </li>
       ))}

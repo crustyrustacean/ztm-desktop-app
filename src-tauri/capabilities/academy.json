@@ -1,0 +1,12 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "academy-remote",
+  "description": "Lets Zero To Mastery pages in the embedded, course, and disposable fullscreen views report fullscreen changes. Grants nothing else.",
+  "windows": ["course", "academy-fullscreen"],
+  "webviews": ["academy"],
+  "local": false,
+  "remote": {
+    "urls": ["https://zerotomastery.io/*", "https://*.zerotomastery.io/*"]
+  },
+  "permissions": ["allow-web-view-fullscreen"]
+}

@@ -14,9 +14,17 @@ import type { View } from "@/lib/view";
 type AppSidebarProps = {
   view: View;
   onViewChange: (view: View) => void;
+  onTooltipOpenChange?: (tooltip: string, open: boolean) => void;
 };
 
-export function AppSidebar({ view, onViewChange }: AppSidebarProps) {
+export function AppSidebar({
+  view,
+  onViewChange,
+  onTooltipOpenChange,
+}: AppSidebarProps) {
+  const handleTooltipOpenChange = (tooltip: string) => (open: boolean) =>
+    onTooltipOpenChange?.(tooltip, open);
+
   return (
     <Sidebar collapsible="icon">
       <SidebarContent>
@@ -28,6 +36,7 @@ export function AppSidebar({ view, onViewChange }: AppSidebarProps) {
                 isActive={view === "dashboard"}
                 aria-current={view === "dashboard" ? "page" : undefined}
                 tooltip="Dashboard"
+                onTooltipOpenChange={handleTooltipOpenChange("dashboard")}
               >
                 <LayoutDashboard />
                 <span>Dashboard</span>
@@ -39,6 +48,7 @@ export function AppSidebar({ view, onViewChange }: AppSidebarProps) {
                 isActive={view === "favourites"}
                 aria-current={view === "favourites" ? "page" : undefined}
                 tooltip="Favourites"
+                onTooltipOpenChange={handleTooltipOpenChange("favourites")}
               >
                 <Star />
                 <span>Favourites</span>
@@ -50,6 +60,7 @@ export function AppSidebar({ view, onViewChange }: AppSidebarProps) {
                 isActive={view === "web-view"}
                 aria-current={view === "web-view" ? "page" : undefined}
                 tooltip="Web View"
+                onTooltipOpenChange={handleTooltipOpenChange("web-view")}
               >
                 <Globe />
                 <span>Web View</span>
@@ -61,13 +72,18 @@ export function AppSidebar({ view, onViewChange }: AppSidebarProps) {
                 isActive={view === "options"}
                 aria-current={view === "options" ? "page" : undefined}
                 tooltip="Options"
+                onTooltipOpenChange={handleTooltipOpenChange("options")}
               >
                 <Settings />
                 <span>Options</span>
               </SidebarMenuButton>
             </SidebarMenuItem>
             <SidebarMenuItem>
-              <SidebarMenuButton onClick={openDiscord} tooltip="Discord">
+              <SidebarMenuButton
+                onClick={openDiscord}
+                tooltip="Discord"
+                onTooltipOpenChange={handleTooltipOpenChange("discord")}
+              >
                 <SiDiscord />
                 <span>Discord</span>
               </SidebarMenuButton>
