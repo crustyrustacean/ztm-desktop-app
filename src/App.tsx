@@ -224,6 +224,7 @@ function App() {
           </header>
           <div id="dashboard" hidden={view !== "dashboard"}>
             <Dashboard
+              active={view === "dashboard" && !discordOpenError}
               name={name}
               academyMember={academyMember}
               filter={query}

@@ -31,6 +31,13 @@ the same page. Browser preview uses the same dialog design to explain that Web
 View requires the desktop app. After dismissing either message, use **Web View
 unavailable** to reopen it.
 
+Opening the app directly at `http://localhost:1420/` in a browser also shows a
+matching, dismissible dialog explaining that course loading requires the desktop
+app. Use **Course loading unavailable** on the Dashboard to reopen that message.
+Browser warnings show the developer launch command only in development builds.
+Course loading and update failures also use a dismissible dialog with **Retry**;
+saved courses remain available when an update fails.
+
 ## License
 
 This project is licensed under the [MIT License](LICENSE).

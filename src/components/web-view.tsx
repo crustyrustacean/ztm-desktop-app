@@ -97,7 +97,9 @@ export function WebView({
   sidebarTooltipOpenRef.current = sidebarTooltipOpen;
   const loadedRequestId = useRef<number | null>(null);
   const mountGeneration = useRef(0);
-  const reportOpenError = useCallback(() => {
+  const openGeneration = useRef(0);
+  const reportOpenError = useCallback((generation: number) => {
+    if (generation !== openGeneration.current) return;
     loadedRequestId.current = null;
     // A partially opened native view would otherwise cover the error message.
     enqueue("hide_web_view");
@@ -119,6 +121,7 @@ export function WebView({
       });
 
     const initial = requestRef.current;
+    const generation = ++openGeneration.current;
     const alreadyLoaded =
       initial !== null && initial.id === loadedRequestId.current;
     if (initial && !alreadyLoaded) loadedRequestId.current = initial.id;
@@ -137,7 +140,7 @@ export function WebView({
             session: initial?.session,
             authCheck,
           },
-      reportOpenError,
+      () => reportOpenError(generation),
     );
 
     // Covers sidebar collapse as well as window resizes.
@@ -146,6 +149,7 @@ export function WebView({
     window.addEventListener("resize", sync);
 
     return () => {
+      ++openGeneration.current;
       observer.disconnect();
       window.removeEventListener("resize", sync);
       enqueue("hide_web_view");
@@ -179,6 +183,7 @@ export function WebView({
     const container = containerRef.current;
     if (!active || !request || !container || !isTauri()) return;
     if (request.id === loadedRequestId.current) return;
+    const generation = ++openGeneration.current;
     loadedRequestId.current = request.id;
     setOpenError(false);
     setErrorDialogOpen(false);
@@ -190,8 +195,11 @@ export function WebView({
         session: request.session,
         authCheck,
       },
-      reportOpenError,
+      () => reportOpenError(generation),
     );
+    return () => {
+      if (generation === openGeneration.current) ++openGeneration.current;
+    };
   }, [active, request, reportOpenError]);
 
   return (
@@ -219,9 +227,15 @@ export function WebView({
               {desktop ? "Could not open the Web View" : "Web View requires the desktop app"}
             </AlertDialogTitle>
             <AlertDialogDescription>
-              {desktop
-                ? "The Web View could not be opened. Please try again."
-                : "Run npm run tauri dev and use the desktop window, not the browser preview."}
+              {desktop ? "The Web View could not be opened. Please try again." : (
+                <>
+                  Web View is only available in the ZTM desktop app.
+                  Open the desktop app to continue.
+                  {import.meta.env.DEV && (
+                    <> For development, run npm run tauri dev and use the desktop window, not the browser preview.</>
+                  )}
+                </>
+              )}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

@@ -1,15 +1,22 @@
 import { useEffect, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import CourseGrid from "@/components/CourseGrid";
 import type { SyncError } from "@/hooks/use-courses";
 import { matchesFilter, type Course } from "@/lib/course";
 
 // Chosen at render time so the message matches whether a list is actually shown.
-function errorMessage(error: SyncError, hasCourses: boolean) {
-  if (error === "desktop-only") {
-    return "Course loading requires the desktop app. Run npm run tauri dev and use the desktop window, not the browser preview.";
-  }
+function errorMessage(hasCourses: boolean) {
   return hasCourses
     ? "Could not update courses. Showing the saved local list."
     : "Could not load courses. Check your internet connection and try again.";
@@ -23,6 +30,7 @@ function greeting(date: Date) {
 }
 
 type DashboardProps = {
+  active: boolean;
   name: string;
   academyMember: boolean;
   filter: string;
@@ -39,6 +47,7 @@ type DashboardProps = {
 };
 
 function Dashboard({
+  active,
   name,
   academyMember,
   filter,
@@ -52,6 +61,10 @@ function Dashboard({
   onOpenCourse,
   canOpenCourse,
 }: DashboardProps) {
+  const [errorDialogOpen, setErrorDialogOpen] = useState(true);
+  useEffect(() => {
+    if (error && !syncing) setErrorDialogOpen(true);
+  }, [error, syncing]);
   const visibleCourses = courses.filter((course) =>
     matchesFilter(course, filter),
   );
@@ -104,16 +117,50 @@ function Dashboard({
         </p>
       )}
       {error && (
-        <div role="alert" className="mt-4 flex flex-col items-start gap-2">
-          <p className="text-destructive [overflow-wrap:anywhere]">
-            {errorMessage(error, courses.length > 0)}
-          </p>
-          {error === "sync-failed" && !syncing && (
-            <Button variant="outline" size="sm" onClick={onRetry}>
-              Retry
-            </Button>
-          )}
-        </div>
+        <>
+          <Button
+            variant="outline"
+            className="mt-4"
+            onClick={() => setErrorDialogOpen(true)}
+          >
+            Course loading unavailable
+          </Button>
+          <AlertDialog
+            open={active && !syncing && errorDialogOpen}
+            onOpenChange={setErrorDialogOpen}
+          >
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>
+                  {error === "desktop-only"
+                    ? "Course loading requires the desktop app"
+                    : courses.length > 0
+                      ? "Could not update courses"
+                      : "Could not load courses"}
+                </AlertDialogTitle>
+                <AlertDialogDescription>
+                  {error === "desktop-only" ? (
+                    <>
+                      Course loading is only available in the ZTM desktop app.
+                      Open the desktop app to continue.
+                      {import.meta.env.DEV && (
+                        <> For development, run npm run tauri dev and use the desktop window, not the browser preview.</>
+                      )}
+                    </>
+                  ) : errorMessage(courses.length > 0)}
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Dismiss</AlertDialogCancel>
+                {error === "sync-failed" && (
+                  <AlertDialogAction onClick={onRetry}>
+                    Retry
+                  </AlertDialogAction>
+                )}
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+        </>
       )}
       {courses.length > 0 && visibleCourses.length === 0 && (
         <p className="mt-4 text-muted-foreground [overflow-wrap:anywhere]">

@@ -41,6 +41,8 @@ test.beforeEach(async ({ page }) => {
     const eventHandlers = new Map<string, (payload: unknown) => void>();
     const calls: InvokeCall[] = [];
     const rejectedCommands = new Map<string, number>();
+    const delayedCommands = new Map<string, () => Promise<never>>();
+    const delayedRejections = new Map<string, () => void>();
     let callbackId = 0;
 
     Object.assign(globalThis, {
@@ -48,6 +50,19 @@ test.beforeEach(async ({ page }) => {
       __TAURI_CALLS__: calls,
       __rejectTauriCommand(command: string, count = 1) {
         rejectedCommands.set(command, count);
+      },
+      __delayTauriRejection(command: string) {
+        delayedCommands.set(command, () => new Promise<never>((_, reject) => {
+          delayedRejections.set(command, () => reject(
+            new Error(`${command} delayed rejection for test`),
+          ));
+        }));
+      },
+      __releaseTauriRejection(command: string) {
+        const reject = delayedRejections.get(command);
+        if (!reject) throw new Error(`No delayed ${command} to reject`);
+        delayedRejections.delete(command);
+        reject();
       },
       __emitTauriEvent(event: string, payload: unknown = null) {
         eventHandlers.get(event)?.({ event, id: 1, payload });
@@ -63,6 +78,11 @@ test.beforeEach(async ({ page }) => {
         },
         async invoke(command: string, args: Record<string, unknown> = {}) {
           calls.push({ command, args });
+          const delayed = delayedCommands.get(command);
+          if (delayed) {
+            delayedCommands.delete(command);
+            return delayed();
+          }
           const rejections = rejectedCommands.get(command) ?? 0;
           if (rejections > 0) {
             rejectedCommands.set(command, rejections - 1);
@@ -410,6 +430,71 @@ test("embedded webview bounds stay below the header and beside the sidebar", asy
   expect(geometry.slot.bottom).toBeLessThanOrEqual(geometry.viewport.height);
 });
 
+for (const hasCourses of [false, true]) {
+  test(`Dashboard course failure uses a retryable dialog ${hasCourses ? "with" : "without"} saved courses`, async ({ page }) => {
+    await page.addInitScript((keepCourses) => {
+      const mock = globalThis as typeof globalThis & {
+        __rejectTauriCommand: (command: string, count: number) => void;
+        __TAURI_INTERNALS__: {
+          invoke: (command: string, args?: Record<string, unknown>) => Promise<unknown>;
+        };
+      };
+      mock.__rejectTauriCommand("sync_courses", 2);
+      if (!keepCourses) {
+        const invoke = mock.__TAURI_INTERNALS__.invoke;
+        mock.__TAURI_INTERNALS__.invoke = async (command, args) =>
+          command === "load_courses" ? [] : invoke(command, args);
+      }
+    }, hasCourses);
+    await page.reload();
+    await authenticateAcademy(page);
+    const dialog = page.getByRole("alertdialog", {
+      name: hasCourses ? "Could not update courses" : "Could not load courses",
+    });
+    await expect(dialog).toBeVisible();
+    await expect(dialog).toContainText(
+      hasCourses ? "Showing the saved local list" : "Check your internet connection",
+    );
+    await dialog.getByRole("button", { name: "Dismiss" }).click();
+    await expect(dialog).toBeHidden();
+    if (hasCourses) {
+      await expect(page.getByRole("button", { name: "Test Course", exact: true })).toBeVisible();
+    }
+    await page.getByRole("button", { name: "Course loading unavailable" }).click();
+    await dialog.getByRole("button", { name: "Retry" }).click();
+    await expect(dialog).toBeVisible();
+    await dialog.getByRole("button", { name: "Retry" }).click();
+    await expect(dialog).toBeHidden();
+    await expect(page.getByRole("button", { name: "Course loading unavailable" })).toHaveCount(0);
+  });
+}
+
+test("opening localhost in a browser uses matching course and Web View dialogs", async ({ browser }) => {
+  const preview = await browser.newPage();
+  try {
+    await preview.goto("http://localhost:1420/");
+    const courseDialog = preview.getByRole("alertdialog", {
+      name: "Course loading requires the desktop app",
+    });
+    await expect(courseDialog).toBeVisible();
+    await expect(courseDialog).toContainText("Open the desktop app to continue.");
+    await expect(courseDialog).toContainText("not the browser preview");
+    await courseDialog.getByRole("button", { name: "Dismiss" }).click();
+    await expect(courseDialog).toBeHidden();
+    await preview.getByRole("button", { name: "Course loading unavailable" }).click();
+    await expect(courseDialog).toBeVisible();
+    await courseDialog.getByRole("button", { name: "Dismiss" }).click();
+    await preview.getByRole("button", { name: "Web View", exact: true }).click();
+    await expect(preview.getByRole("alertdialog", {
+      name: "Web View requires the desktop app",
+    })).toBeVisible();
+    await expect(courseDialog).toHaveCount(0);
+    await expect(preview.getByRole("alertdialog")).toHaveCount(1);
+  } finally {
+    await preview.close();
+  }
+});
+
 test("browser preview explains Web View availability in a dismissible dialog", async ({ page }) => {
   await page.evaluate(() => {
     Object.assign(globalThis, { isTauri: false });
@@ -521,6 +606,59 @@ test("a failed course Web View is hidden and retries the same URL", async ({ pag
     .toEqual(Array(3).fill(
       "https://academy.zerotomastery.io/courses/enrolled/test-course",
     ));
+});
+
+test("a superseded delayed failure cannot hide a newer course or show an error", async ({ page }) => {
+  await page.evaluate(() => {
+    const mock = globalThis as typeof globalThis & {
+      __TAURI_CALLS__: InvokeCall[];
+      __delayTauriRejection: (command: string) => void;
+    };
+    mock.__TAURI_CALLS__.length = 0;
+    mock.__delayTauriRejection("show_web_view");
+  });
+  await page.getByRole("button", { name: "Test Course", exact: true }).click();
+  await expect.poll(() =>
+    page.evaluate(() =>
+      (globalThis as typeof globalThis & { __TAURI_CALLS__: InvokeCall[] })
+        .__TAURI_CALLS__.some((call) => call.command === "show_web_view"),
+    ),
+  ).toBe(true);
+
+  await page.keyboard.press("Alt+1");
+  await page.getByRole("button", { name: "Second Course", exact: true }).click();
+  await expect(page.getByTestId("web-view-slot")).toBeVisible();
+  await page.evaluate(() =>
+    (globalThis as typeof globalThis & {
+      __releaseTauriRejection: (command: string) => void;
+    }).__releaseTauriRejection("show_web_view"),
+  );
+
+  // A resize command is queued after B's show and any erroneous failure hide.
+  await page.setViewportSize({ width: 1200, height: 800 });
+  await expect.poll(() =>
+    page.evaluate(() =>
+      (globalThis as typeof globalThis & { __TAURI_CALLS__: InvokeCall[] })
+        .__TAURI_CALLS__.some((call) =>
+          call.command === "set_web_view_bounds" &&
+          (call.args.bounds as { width: number }).width === 1152,
+        ),
+    ),
+  ).toBe(true);
+  const commands = await page.evaluate(() =>
+    (globalThis as typeof globalThis & { __TAURI_CALLS__: InvokeCall[] })
+      .__TAURI_CALLS__.filter((call) =>
+        call.command === "show_web_view" || call.command === "hide_web_view",
+      ),
+  );
+  expect(commands.map((call) => call.command)).toEqual([
+    "show_web_view", "hide_web_view", "show_web_view",
+  ]);
+  expect(commands.at(-1)?.args.url).toBe(
+    "https://academy.zerotomastery.io/courses/enrolled/second-course",
+  );
+  await expect(page.getByRole("alertdialog")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Web View unavailable" })).toHaveCount(0);
 });
 
 test("entering Web View from the sidebar collapses the app sidebar", async ({
