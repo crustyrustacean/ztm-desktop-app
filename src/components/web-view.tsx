@@ -60,9 +60,11 @@ function enqueue(
     authCheck?: boolean;
   },
   onError?: (error: unknown) => void,
+  onSuccess?: () => void,
 ) {
   pending = pending
     .then(() => invoke(command, args))
+    .then(() => onSuccess?.())
     .catch((error) => {
       console.error(`${command} failed`, error);
       onError?.(error);
@@ -96,16 +98,13 @@ export function WebView({
   const sidebarTooltipOpenRef = useRef(sidebarTooltipOpen);
   sidebarTooltipOpenRef.current = sidebarTooltipOpen;
   const loadedRequestId = useRef<number | null>(null);
-  const loadedRequestGeneration = useRef<number | null>(null);
+  const scheduledRequestId = useRef<number | null>(null);
   const mountGeneration = useRef(0);
   const openGeneration = useRef(0);
   const reportOpenError = useCallback((generation: number) => {
-    // Even an inactive failure invalidates its own marker, but never a newer one.
-    if (generation === loadedRequestGeneration.current) {
-      loadedRequestId.current = null;
-      loadedRequestGeneration.current = null;
-    }
     if (generation !== openGeneration.current) return;
+    loadedRequestId.current = null;
+    scheduledRequestId.current = null;
     // A partially opened native view would otherwise cover the error message.
     enqueue("hide_web_view");
     setOpenError(true);
@@ -129,8 +128,9 @@ export function WebView({
     const generation = ++openGeneration.current;
     const alreadyLoaded =
       initial !== null && initial.id === loadedRequestId.current;
-    if (initial && !alreadyLoaded) loadedRequestId.current = initial.id;
-    loadedRequestGeneration.current = generation;
+    // Pending requests prevent duplicate effects, but are not safe to resume yet.
+    scheduledRequestId.current = initial?.id ?? null;
+    if (!alreadyLoaded) loadedRequestId.current = null;
     setOpenError(false);
     setErrorDialogOpen(false);
     enqueue(
@@ -147,6 +147,11 @@ export function WebView({
             authCheck,
           },
       () => reportOpenError(generation),
+      () => {
+        if (generation === openGeneration.current) {
+          loadedRequestId.current = initial?.id ?? null;
+        }
+      },
     );
 
     // Covers sidebar collapse as well as window resizes.
@@ -156,6 +161,7 @@ export function WebView({
 
     return () => {
       ++openGeneration.current;
+      scheduledRequestId.current = null;
       observer.disconnect();
       window.removeEventListener("resize", sync);
       enqueue("hide_web_view");
@@ -188,10 +194,10 @@ export function WebView({
   useEffect(() => {
     const container = containerRef.current;
     if (!active || !request || !container || !isTauri()) return;
-    if (request.id === loadedRequestId.current) return;
+    if (request.id === scheduledRequestId.current) return;
     const generation = ++openGeneration.current;
-    loadedRequestId.current = request.id;
-    loadedRequestGeneration.current = generation;
+    scheduledRequestId.current = request.id;
+    loadedRequestId.current = null;
     setOpenError(false);
     setErrorDialogOpen(false);
     enqueue(
@@ -203,9 +209,17 @@ export function WebView({
         authCheck,
       },
       () => reportOpenError(generation),
+      () => {
+        if (generation === openGeneration.current) {
+          loadedRequestId.current = request.id;
+        }
+      },
     );
     return () => {
-      if (generation === openGeneration.current) ++openGeneration.current;
+      if (generation === openGeneration.current) {
+        ++openGeneration.current;
+        scheduledRequestId.current = null;
+      }
     };
   }, [active, request, reportOpenError]);
 

@@ -661,7 +661,8 @@ test("a superseded delayed failure cannot hide a newer course or show an error",
   await expect(page.getByRole("button", { name: "Web View unavailable" })).toHaveCount(0);
 });
 
-test("returning after an inactive open failure retries the original course URL", async ({ page }) => {
+for (const returnBeforeFailure of [false, true]) {
+test(`returning ${returnBeforeFailure ? "before" : "after"} an inactive open failure retries the original course URL`, async ({ page }) => {
   const courseUrl = "https://academy.zerotomastery.io/courses/enrolled/test-course";
   await page.evaluate(() => {
     const mock = globalThis as typeof globalThis & {
@@ -680,6 +681,10 @@ test("returning after an inactive open failure retries the original course URL",
   ).toBe(true);
   await page.keyboard.press("Alt+1");
   await expect(page.getByTestId("web-view-slot")).toBeHidden();
+  if (returnBeforeFailure) {
+    await page.keyboard.press("Alt+3");
+    await expect(page.getByTestId("web-view-slot")).toBeVisible();
+  }
   await page.evaluate(() =>
     (globalThis as typeof globalThis & {
       __releaseTauriRejection: (command: string) => void;
@@ -694,7 +699,7 @@ test("returning after an inactive open failure retries the original course URL",
   ).toBe(true);
   await expect(page.getByRole("alertdialog")).toHaveCount(0);
 
-  await page.keyboard.press("Alt+3");
+  if (!returnBeforeFailure) await page.keyboard.press("Alt+3");
   await expect.poll(() =>
     page.evaluate(() =>
       (globalThis as typeof globalThis & { __TAURI_CALLS__: InvokeCall[] })
@@ -715,6 +720,7 @@ test("returning after an inactive open failure retries the original course URL",
     ),
   ).toEqual([courseUrl, courseUrl, undefined]);
 });
+}
 
 test("entering Web View from the sidebar collapses the app sidebar", async ({
   page,
