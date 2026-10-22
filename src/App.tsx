@@ -5,6 +5,7 @@ import { SearchIcon } from "lucide-react";
 import Dashboard from "./pages/Dashboard";
 import Favourites from "./pages/Favourites";
 import Options from "./pages/Options";
+import { AppAlertDialog } from "@/components/app-alert-dialog";
 import { AppSidebar } from "@/components/app-sidebar";
 import {
   InputGroup,
@@ -12,11 +13,7 @@ import {
   InputGroupInput,
 } from "@/components/ui/input-group";
 import { Kbd } from "@/components/ui/kbd";
-import {
-  WebView,
-  type WebViewRequest,
-  type WebViewSession,
-} from "@/components/web-view";
+import { WebView } from "@/components/web-view";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { useAcademyMember } from "@/hooks/use-academy-member";
@@ -28,6 +25,10 @@ import { useLastCourse } from "@/hooks/use-last-course";
 import { useShortcutModifier } from "@/hooks/use-shortcut-modifier";
 import { useShortcuts } from "@/hooks/use-shortcuts";
 import { useUserName } from "@/hooks/use-user-name";
+import type {
+  WebViewRequest,
+  WebViewSession,
+} from "@/hooks/use-web-view-manager";
 import { courseUrl, type Course } from "@/lib/course";
 import { openDiscord } from "@/lib/discord";
 import type { View } from "@/lib/view";
@@ -46,6 +47,7 @@ function App() {
     desktop ? "web-view" : "dashboard",
   );
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [discordOpenError, setDiscordOpenError] = useState(false);
   const { courses, syncing, error, retry } = useCourses();
   const { favourites, toggleFavourite } = useFavourites();
   const { lastCourse, setLastCourse } = useLastCourse();
@@ -82,6 +84,15 @@ function App() {
     requestAnimationFrame(() => filterRef.current?.focus());
   }
 
+  async function handleOpenDiscord() {
+    try {
+      await openDiscord();
+    } catch (error) {
+      console.error("Could not open Discord in the app or browser", error);
+      setDiscordOpenError(true);
+    }
+  }
+
   // Shortcuts stay off on the sign-in screen, where there is no sidebar to jump around.
   const showHints = useShortcuts(
     shortcutModifier,
@@ -91,7 +102,7 @@ function App() {
           Digit2: () => selectView("favourites"),
           Digit3: () => selectView("web-view"),
           Digit4: () => selectView("options"),
-          Digit5: openDiscord,
+          Digit5: handleOpenDiscord,
           KeyS: focusFilter,
         }
       : {},
@@ -177,6 +188,7 @@ function App() {
         <AppSidebar
           view={view}
           onViewChange={selectView}
+          onOpenDiscord={handleOpenDiscord}
           onTooltipOpenChange={handleSidebarTooltipOpenChange}
           showHints={showHints}
         />
@@ -206,6 +218,7 @@ function App() {
           </header>
           <div id="dashboard" hidden={view !== "dashboard"}>
             <Dashboard
+              active={view === "dashboard" && !discordOpenError}
               name={name}
               academyMember={academyMember}
               filter={query}
@@ -234,7 +247,7 @@ function App() {
           </div>
           <div id="web-view" hidden={view !== "web-view"}>
             <WebView
-              active={view === "web-view"}
+              active={view === "web-view" && !discordOpenError}
               request={webViewRequest}
               sidebarTooltipOpen={activeSidebarTooltip !== null}
             />
@@ -255,6 +268,12 @@ function App() {
           </div>
         </div>
       </SidebarProvider>
+      <AppAlertDialog
+        open={discordOpenError}
+        onOpenChange={setDiscordOpenError}
+        title="Could not open Discord"
+        description="Discord could not be opened in the app or your browser. Check that Discord or a default browser is installed, then try again."
+      />
     </TooltipProvider>
   );
 }
