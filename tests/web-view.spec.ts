@@ -410,7 +410,30 @@ test("embedded webview bounds stay below the header and beside the sidebar", asy
   expect(geometry.slot.bottom).toBeLessThanOrEqual(geometry.viewport.height);
 });
 
-test("a failed webview open is reported in the Web View area", async ({
+test("browser preview explains Web View availability in a dismissible dialog", async ({ page }) => {
+  await page.evaluate(() => {
+    Object.assign(globalThis, { isTauri: false });
+  });
+  await expect(page.getByRole("alertdialog")).toHaveCount(0);
+  await page.getByRole("button", { name: "Web View", exact: true }).click();
+  const dialog = page.getByRole("alertdialog", {
+    name: "Web View requires the desktop app",
+  });
+  await expect(dialog).toBeVisible();
+  await expect(dialog).toContainText("not the browser preview");
+  await expect(dialog.getByRole("button", { name: "Try again" })).toHaveCount(0);
+  await dialog.getByRole("button", { name: "Dismiss" }).click();
+  await expect(dialog).toBeHidden();
+  await page.getByRole("button", { name: "Web View unavailable" }).click();
+  await expect(dialog).toBeVisible();
+  await dialog.getByRole("button", { name: "Dismiss" }).click();
+  await page.keyboard.press("Alt+1");
+  await expect(dialog).toBeHidden();
+  await page.keyboard.press("Alt+3");
+  await expect(dialog).toBeVisible();
+});
+
+test("a failed webview open is reported in a dismissible dialog", async ({
   page,
 }) => {
   await page.evaluate(() =>
@@ -424,8 +447,12 @@ test("a failed webview open is reported in the Web View area", async ({
   await page.getByRole("button", { name: "Web View" }).click();
 
   await expect(
-    page.getByRole("alert").getByText("Could not open the Web View."),
+    page.getByRole("alertdialog", { name: "Could not open the Web View" }),
   ).toBeVisible();
+  await page.getByRole("button", { name: "Dismiss" }).click();
+  await expect(page.getByRole("alertdialog")).toBeHidden();
+  await page.getByRole("button", { name: "Web View unavailable" }).click();
+  await expect(page.getByRole("alertdialog")).toBeVisible();
 });
 
 test("the Web View error clears after a successful retry", async ({ page }) => {
@@ -438,12 +465,12 @@ test("the Web View error clears after a successful retry", async ({ page }) => {
   );
   await page.getByRole("button", { name: "Web View" }).click();
   await expect(
-    page.getByRole("alert").getByText("Could not open the Web View."),
+    page.getByRole("alertdialog", { name: "Could not open the Web View" }),
   ).toBeVisible();
 
   await page.getByRole("button", { name: "Try again" }).click();
 
-  await expect(page.getByRole("alert")).toBeHidden();
+  await expect(page.getByRole("alertdialog")).toBeHidden();
 });
 
 test("a failed course Web View is hidden and retries the same URL", async ({ page }) => {
@@ -456,8 +483,8 @@ test("a failed course Web View is hidden and retries the same URL", async ({ pag
     mock.__rejectTauriCommand("show_web_view", 2);
   });
   await page.getByRole("button", { name: "Test Course", exact: true }).click();
-  const alert = page.getByRole("alert");
-  await expect(alert).toContainText("Could not open the Web View.");
+  const alert = page.getByRole("alertdialog");
+  await expect(alert).toContainText("Could not open the Web View");
   await expect
     .poll(() =>
       page.evaluate(() =>

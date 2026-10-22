@@ -25,8 +25,11 @@ Discord or the external browser.
 
 ## Web View
 
-If the embedded Web View cannot open, an inline error and a **Try again** button
-are shown, including on the Academy sign-in screen. Retrying opens the same page.
+If the embedded Web View cannot open, a dismissible error dialog with a **Try
+again** button is shown, including on the Academy sign-in screen. Retrying opens
+the same page. Browser preview uses the same dialog design to explain that Web
+View requires the desktop app. After dismissing either message, use **Web View
+unavailable** to reopen it.
 
 ## License
 

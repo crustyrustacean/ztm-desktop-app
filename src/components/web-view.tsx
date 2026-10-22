@@ -1,6 +1,16 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import { Button } from "@/components/ui/button";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 type Bounds = { x: number; y: number; width: number; height: number };
 
@@ -75,8 +85,10 @@ export function WebView({
   sidebarTooltipOpen = false,
   authCheck = false,
 }: WebViewProps) {
+  const desktop = isTauri();
   const containerRef = useRef<HTMLDivElement>(null);
   const [openError, setOpenError] = useState(false);
+  const [errorDialogOpen, setErrorDialogOpen] = useState(false);
   const [retryAttempt, setRetryAttempt] = useState(0);
   // Read when the web view is shown so opening a course doesn't create it twice.
   const requestRef = useRef(request);
@@ -90,7 +102,12 @@ export function WebView({
     // A partially opened native view would otherwise cover the error message.
     enqueue("hide_web_view");
     setOpenError(true);
+    setErrorDialogOpen(true);
   }, []);
+
+  useEffect(() => {
+    if (active && !desktop) setErrorDialogOpen(true);
+  }, [active, desktop]);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -106,6 +123,7 @@ export function WebView({
       initial !== null && initial.id === loadedRequestId.current;
     if (initial && !alreadyLoaded) loadedRequestId.current = initial.id;
     setOpenError(false);
+    setErrorDialogOpen(false);
     enqueue(
       "show_web_view",
       alreadyLoaded
@@ -163,6 +181,7 @@ export function WebView({
     if (request.id === loadedRequestId.current) return;
     loadedRequestId.current = request.id;
     setOpenError(false);
+    setErrorDialogOpen(false);
     enqueue(
       "show_web_view",
       {
@@ -175,36 +194,48 @@ export function WebView({
     );
   }, [active, request, reportOpenError]);
 
-  if (!isTauri()) {
-    return (
-      <p className="p-4 text-sm text-muted-foreground">
-        Web View requires the desktop app. Run npm run tauri dev and use the
-        desktop window, not the browser preview.
-      </p>
-    );
-  }
-
   return (
     <div
       ref={containerRef}
       data-testid="web-view-slot"
       className="h-[calc(100svh-3.5rem)] w-full"
     >
-      {openError && (
-        <div
-          role="alert"
-          className="m-4 space-y-2 rounded-md border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive"
+      {(openError || !desktop) && (
+        <Button
+          variant="outline"
+          className="m-4"
+          onClick={() => setErrorDialogOpen(true)}
         >
-          <p>Could not open the Web View.</p>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setRetryAttempt((attempt) => attempt + 1)}
-          >
-            Try again
-          </Button>
-        </div>
+          Web View unavailable
+        </Button>
       )}
+      <AlertDialog
+        open={active && errorDialogOpen}
+        onOpenChange={setErrorDialogOpen}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {desktop ? "Could not open the Web View" : "Web View requires the desktop app"}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {desktop
+                ? "The Web View could not be opened. Please try again."
+                : "Run npm run tauri dev and use the desktop window, not the browser preview."}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Dismiss</AlertDialogCancel>
+            {desktop && (
+              <AlertDialogAction
+                onClick={() => setRetryAttempt((attempt) => attempt + 1)}
+              >
+                Try again
+              </AlertDialogAction>
+            )}
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
