@@ -558,6 +558,83 @@ test("the Web View error clears after a successful retry", async ({ page }) => {
   await expect(page.getByRole("alertdialog")).toBeHidden();
 });
 
+test("the Web View error dialog is described, takes focus, and returns it", async ({
+  page,
+}) => {
+  await page.evaluate(() =>
+    (
+      globalThis as typeof globalThis & {
+        __rejectTauriCommand: (command: string) => void;
+      }
+    ).__rejectTauriCommand("show_web_view"),
+  );
+  await page.getByRole("button", { name: "Web View" }).click();
+  const dialog = page.getByRole("alertdialog", {
+    name: "Could not open the Web View",
+  });
+  await expect(dialog).toHaveAccessibleDescription(
+    "The Web View could not be opened. Please try again.",
+  );
+  await expect
+    .poll(() => dialog.evaluate((element) => element.contains(document.activeElement)))
+    .toBe(true);
+
+  await page.keyboard.press("Escape");
+  await expect(dialog).toBeHidden();
+  const reopen = page.getByRole("button", { name: "Web View unavailable" });
+  await reopen.click();
+  await expect(dialog).toBeVisible();
+  await dialog.getByRole("button", { name: "Dismiss" }).click();
+  await expect(dialog).toBeHidden();
+  await expect(reopen).toBeFocused();
+});
+
+test("a failed demoted session is retried with the same URL and session", async ({
+  page,
+}) => {
+  const session = {
+    url: "https://academy.zerotomastery.io/lessons/current-lesson",
+    scrollX: 0,
+    scrollY: 320,
+    mediaTime: 42,
+    mediaPaused: true,
+    playbackRate: 1,
+  };
+  await page.evaluate(() => {
+    const mock = globalThis as typeof globalThis & {
+      __TAURI_CALLS__: InvokeCall[];
+      __rejectTauriCommand: (command: string, count: number) => void;
+    };
+    mock.__TAURI_CALLS__.length = 0;
+    mock.__rejectTauriCommand("show_web_view", 2);
+  });
+  await page.evaluate(
+    ({ eventName, payload }) =>
+      (
+        globalThis as typeof globalThis & {
+          __emitTauriEvent: (event: string, payload: unknown) => void;
+        }
+      ).__emitTauriEvent(eventName, payload),
+    { eventName: WEB_VIEW_DEMOTED_EVENT, payload: session },
+  );
+  const dialog = page.getByRole("alertdialog", {
+    name: "Could not open the Web View",
+  });
+  await expect(dialog).toBeVisible();
+  await dialog.getByRole("button", { name: "Try again" }).click();
+  await expect(dialog).toBeVisible();
+  await dialog.getByRole("button", { name: "Try again" }).click();
+  await expect(dialog).toBeHidden();
+
+  await expect.poll(() =>
+    page.evaluate(() =>
+      (globalThis as typeof globalThis & { __TAURI_CALLS__: InvokeCall[] })
+        .__TAURI_CALLS__.filter((call) => call.command === "show_web_view")
+        .map((call) => ({ url: call.args.url, session: call.args.session })),
+    ),
+  ).toEqual(Array(3).fill({ url: session.url, session }));
+});
+
 test("a failed course Web View is hidden and retries the same URL", async ({ page }) => {
   await page.evaluate(() => {
     const mock = globalThis as typeof globalThis & {

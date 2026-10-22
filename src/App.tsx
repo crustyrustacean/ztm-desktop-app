@@ -13,11 +13,7 @@ import {
   InputGroupInput,
 } from "@/components/ui/input-group";
 import { Kbd } from "@/components/ui/kbd";
-import {
-  WebView,
-  type WebViewRequest,
-  type WebViewSession,
-} from "@/components/web-view";
+import { WebView } from "@/components/web-view";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { useAcademyMember } from "@/hooks/use-academy-member";
@@ -29,6 +25,10 @@ import { useLastCourse } from "@/hooks/use-last-course";
 import { useShortcutModifier } from "@/hooks/use-shortcut-modifier";
 import { useShortcuts } from "@/hooks/use-shortcuts";
 import { useUserName } from "@/hooks/use-user-name";
+import type {
+  WebViewRequest,
+  WebViewSession,
+} from "@/hooks/use-web-view-manager";
 import { courseUrl, type Course } from "@/lib/course";
 import { openDiscord } from "@/lib/discord";
 import type { View } from "@/lib/view";

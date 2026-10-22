@@ -1,66 +1,10 @@
-import { useCallback, useEffect, useRef, useState } from "react";
-import { invoke, isTauri } from "@tauri-apps/api/core";
+import { isTauri } from "@tauri-apps/api/core";
 import { AppAlertDialog } from "@/components/app-alert-dialog";
 import { Button } from "@/components/ui/button";
-
-type Bounds = { x: number; y: number; width: number; height: number };
-
-// Native child webviews always composite above the shell DOM. Leave a small
-// temporary gutter so collapsed-sidebar tooltips can be seen beside the rail.
-const SIDEBAR_TOOLTIP_GUTTER = 112;
-
-/** Mirrors `PageSession` in src-tauri/src/web_view.rs. */
-export type WebViewSession = {
-  url: string;
-  scrollX: number;
-  scrollY: number;
-  mediaTime: number | null;
-  mediaPaused: boolean | null;
-  playbackRate: number | null;
-};
-
-/** A page to load in the web view. `id` changes on every request, even for the same URL. */
-export type WebViewRequest = {
-  url: string;
-  id: number;
-  session?: WebViewSession;
-};
-
-function boundsOf(element: HTMLElement, sidebarTooltipOpen = false): Bounds {
-  const rect = element.getBoundingClientRect();
-  const gutter = sidebarTooltipOpen
-    ? Math.min(SIDEBAR_TOOLTIP_GUTTER, rect.width)
-    : 0;
-  return {
-    x: rect.left + gutter,
-    y: rect.top,
-    width: rect.width - gutter,
-    height: rect.height,
-  };
-}
-
-// Rust runs commands concurrently, so chain them to keep show/hide in call order
-// and stop two show calls from both creating the webview.
-let pending: Promise<unknown> = Promise.resolve();
-function enqueue(
-  command: string,
-  args?: {
-    bounds: Bounds;
-    url?: string;
-    session?: WebViewSession;
-    authCheck?: boolean;
-  },
-  onError?: (error: unknown) => void,
-  onSuccess?: () => void,
-) {
-  pending = pending
-    .then(() => invoke(command, args))
-    .then(() => onSuccess?.())
-    .catch((error) => {
-      console.error(`${command} failed`, error);
-      onError?.(error);
-    });
-}
+import {
+  useWebViewManager,
+  type WebViewRequest,
+} from "@/hooks/use-web-view-manager";
 
 type WebViewProps = {
   active: boolean;
@@ -79,140 +23,13 @@ export function WebView({
   authCheck = false,
 }: WebViewProps) {
   const desktop = isTauri();
-  const containerRef = useRef<HTMLDivElement>(null);
-  const [openError, setOpenError] = useState(false);
-  const [errorDialogOpen, setErrorDialogOpen] = useState(false);
-  const [retryAttempt, setRetryAttempt] = useState(0);
-  // Read when the web view is shown so opening a course doesn't create it twice.
-  const requestRef = useRef(request);
-  requestRef.current = request;
-  const sidebarTooltipOpenRef = useRef(sidebarTooltipOpen);
-  sidebarTooltipOpenRef.current = sidebarTooltipOpen;
-  const loadedRequestId = useRef<number | null>(null);
-  const scheduledRequestId = useRef<number | null>(null);
-  const mountGeneration = useRef(0);
-  const openGeneration = useRef(0);
-  const reportOpenError = useCallback((generation: number) => {
-    if (generation !== openGeneration.current) return;
-    loadedRequestId.current = null;
-    scheduledRequestId.current = null;
-    // A partially opened native view would otherwise cover the error message.
-    enqueue("hide_web_view");
-    setOpenError(true);
-    setErrorDialogOpen(true);
-  }, []);
-
-  useEffect(() => {
-    if (active && !desktop) setErrorDialogOpen(true);
-  }, [active, desktop]);
-
-  useEffect(() => {
-    const container = containerRef.current;
-    if (!active || !container || !isTauri()) return;
-
-    const sync = () =>
-      enqueue("set_web_view_bounds", {
-        bounds: boundsOf(container, sidebarTooltipOpenRef.current),
-      });
-
-    const initial = requestRef.current;
-    const generation = ++openGeneration.current;
-    const alreadyLoaded =
-      initial !== null && initial.id === loadedRequestId.current;
-    // Pending requests prevent duplicate effects, but are not safe to resume yet.
-    scheduledRequestId.current = initial?.id ?? null;
-    if (!alreadyLoaded) loadedRequestId.current = null;
-    setOpenError(false);
-    setErrorDialogOpen(false);
-    enqueue(
-      "show_web_view",
-      alreadyLoaded
-        ? {
-            bounds: boundsOf(container, sidebarTooltipOpenRef.current),
-            authCheck,
-          }
-        : {
-            bounds: boundsOf(container, sidebarTooltipOpenRef.current),
-            url: initial?.url,
-            session: initial?.session,
-            authCheck,
-          },
-      () => reportOpenError(generation),
-      () => {
-        if (generation === openGeneration.current) {
-          loadedRequestId.current = initial?.id ?? null;
-        }
-      },
-    );
-
-    // Covers sidebar collapse as well as window resizes.
-    const observer = new ResizeObserver(sync);
-    observer.observe(container);
-    window.addEventListener("resize", sync);
-
-    return () => {
-      ++openGeneration.current;
-      scheduledRequestId.current = null;
-      observer.disconnect();
-      window.removeEventListener("resize", sync);
-      enqueue("hide_web_view");
-    };
-  }, [active, retryAttempt, reportOpenError]);
-
-  useEffect(() => {
-    const generation = ++mountGeneration.current;
-    return () => {
-      // Strict Mode probes effects with a setup/cleanup/setup cycle. Deferring
-      // lets the replacement setup cancel that probe without masking a real
-      // component unmount.
-      queueMicrotask(() => {
-        if (mountGeneration.current === generation && isTauri()) {
-          enqueue("dispose_web_view");
-        }
-      });
-    };
-  }, []);
-
-  useEffect(() => {
-    const container = containerRef.current;
-    if (!active || !container || !isTauri()) return;
-    enqueue("set_web_view_bounds", {
-      bounds: boundsOf(container, sidebarTooltipOpen),
-    });
-  }, [active, sidebarTooltipOpen]);
-
-  // A page requested while the web view is already showing.
-  useEffect(() => {
-    const container = containerRef.current;
-    if (!active || !request || !container || !isTauri()) return;
-    if (request.id === scheduledRequestId.current) return;
-    const generation = ++openGeneration.current;
-    scheduledRequestId.current = request.id;
-    loadedRequestId.current = null;
-    setOpenError(false);
-    setErrorDialogOpen(false);
-    enqueue(
-      "show_web_view",
-      {
-        bounds: boundsOf(container, sidebarTooltipOpenRef.current),
-        url: request.url,
-        session: request.session,
-        authCheck,
-      },
-      () => reportOpenError(generation),
-      () => {
-        if (generation === openGeneration.current) {
-          loadedRequestId.current = request.id;
-        }
-      },
-    );
-    return () => {
-      if (generation === openGeneration.current) {
-        ++openGeneration.current;
-        scheduledRequestId.current = null;
-      }
-    };
-  }, [active, request, reportOpenError]);
+  const {
+    containerRef,
+    openFailed,
+    errorDialogOpen,
+    setErrorDialogOpen,
+    retry,
+  } = useWebViewManager({ active, request, sidebarTooltipOpen, authCheck });
 
   return (
     <div
@@ -220,7 +37,7 @@ export function WebView({
       data-testid="web-view-slot"
       className="h-[calc(100svh-3.5rem)] w-full"
     >
-      {(openError || !desktop) && (
+      {(openFailed || !desktop) && (
         <Button
           variant="outline"
           className="m-4"
@@ -250,14 +67,7 @@ export function WebView({
             </>
           )
         }
-        action={
-          desktop
-            ? {
-                label: "Try again",
-                onClick: () => setRetryAttempt((attempt) => attempt + 1),
-              }
-            : undefined
-        }
+        action={desktop ? { label: "Try again", onClick: retry } : undefined}
       />
     </div>
   );
