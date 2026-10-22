@@ -30,6 +30,8 @@ type OptionsProps = {
   onCourseOpenModeChange: (courseOpenMode: CourseOpenMode) => void;
   shortcutModifier: ShortcutModifier;
   onShortcutModifierChange: (shortcutModifier: ShortcutModifier) => void;
+  animations: boolean;
+  onAnimationsChange: (animations: boolean) => void;
 };
 
 export default function Options({
@@ -41,6 +43,8 @@ export default function Options({
   onCourseOpenModeChange,
   shortcutModifier,
   onShortcutModifierChange,
+  animations,
+  onAnimationsChange,
 }: OptionsProps) {
   const [theme, setTheme] = useState<Theme>(() =>
     document.documentElement.classList.contains("dark") ? "dark" : "light",
@@ -124,6 +128,19 @@ export default function Options({
           id="dark-mode"
           checked={theme === "dark"}
           onCheckedChange={handleThemeChange}
+        />
+      </Field>
+      <Field orientation="horizontal">
+        <FieldContent>
+          <FieldLabel htmlFor="animations">Animations</FieldLabel>
+          <FieldDescription>
+            Play subtle motion effects, such as zooming course cards on hover.
+          </FieldDescription>
+        </FieldContent>
+        <Switch
+          id="animations"
+          checked={animations}
+          onCheckedChange={onAnimationsChange}
         />
       </Field>
       <Field orientation="horizontal">

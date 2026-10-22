@@ -8,6 +8,7 @@ type FavouritesProps = {
   onToggleFavourite: (uuid: string) => void;
   onOpenCourse: (course: Course) => void;
   canOpenCourse: (course: Course) => boolean;
+  animations: boolean;
 };
 
 function Favourites({
@@ -17,6 +18,7 @@ function Favourites({
   onToggleFavourite,
   onOpenCourse,
   canOpenCourse,
+  animations,
 }: FavouritesProps) {
   const favouriteCourses = courses.filter((course) =>
     favourites.has(course.uuid),
@@ -47,6 +49,7 @@ function Favourites({
           onToggleFavourite={onToggleFavourite}
           onOpenCourse={onOpenCourse}
           canOpenCourse={canOpenCourse}
+          animations={animations}
           labelledBy="favourites-heading"
         />
       )}

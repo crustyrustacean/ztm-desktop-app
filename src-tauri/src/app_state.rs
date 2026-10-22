@@ -47,6 +47,8 @@ pub struct AppState {
     course_open_mode: Option<CourseOpenMode>,
     /// Key held for keyboard shortcuts. Unset means Alt.
     shortcut_modifier: Option<ShortcutModifier>,
+    /// Whether UI animations such as the course card hover zoom play. Unset means on.
+    animations: Option<bool>,
 }
 
 fn state_path(app: &tauri::AppHandle) -> Result<PathBuf, String> {
@@ -110,12 +112,13 @@ mod tests {
             academy_member: Some(false),
             course_open_mode: Some(CourseOpenMode::Window),
             shortcut_modifier: Some(ShortcutModifier::Ctrl),
+            animations: Some(false),
         };
         write_state(&path, &state).unwrap();
         assert_eq!(read_state(&path), state);
         assert_eq!(
             serde_json::from_slice::<serde_json::Value>(&fs::read(&path).unwrap()).unwrap(),
-            serde_json::json!({ "theme": "dark", "favourites": ["39fcbbb8"], "name": "Mark", "academyMember": false, "courseOpenMode": "window", "shortcutModifier": "ctrl" })
+            serde_json::json!({ "theme": "dark", "favourites": ["39fcbbb8"], "name": "Mark", "academyMember": false, "courseOpenMode": "window", "shortcutModifier": "ctrl", "animations": false })
         );
     }
 
