@@ -768,3 +768,32 @@ test("demotion recreates the embedded view with its current session", async ({
     )
     .toBe(true);
 });
+
+test("opening a course shows it under Resume on the Dashboard", async ({
+  page,
+}) => {
+  await expect(page.getByRole("heading", { name: "Resume" })).toHaveCount(0);
+
+  await page.getByRole("button", { name: "Second Course", exact: true }).click();
+  await expect
+    .poll(() =>
+      page.evaluate(() =>
+        (
+          globalThis as typeof globalThis & { __TAURI_CALLS__: InvokeCall[] }
+        ).__TAURI_CALLS__.some(
+          (call) =>
+            call.command === "save_state" &&
+            (call.args.state as { lastCourse?: string }).lastCourse ===
+              "second-course",
+        ),
+      ),
+    )
+    .toBe(true);
+
+  await page.getByRole("button", { name: "Dashboard" }).click();
+  const resume = page.getByRole("list", { name: "Resume" });
+  await expect(resume.getByRole("listitem")).toHaveCount(1);
+  await expect(
+    resume.getByRole("button", { name: "Second Course", exact: true }),
+  ).toBeVisible();
+});

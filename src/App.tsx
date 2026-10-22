@@ -24,6 +24,7 @@ import { useAnimations } from "@/hooks/use-animations";
 import { useCourseOpenMode } from "@/hooks/use-course-open-mode";
 import { useCourses } from "@/hooks/use-courses";
 import { useFavourites } from "@/hooks/use-favourites";
+import { useLastCourse } from "@/hooks/use-last-course";
 import { useShortcutModifier } from "@/hooks/use-shortcut-modifier";
 import { useShortcuts } from "@/hooks/use-shortcuts";
 import { useUserName } from "@/hooks/use-user-name";
@@ -47,6 +48,7 @@ function App() {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const { courses, syncing, error, retry } = useCourses();
   const { favourites, toggleFavourite } = useFavourites();
+  const { lastCourse, setLastCourse } = useLastCourse();
   const { name, setName } = useUserName();
   const { academyMember, setAcademyMember } = useAcademyMember();
   const { courseOpenMode, setCourseOpenMode } = useCourseOpenMode();
@@ -134,6 +136,7 @@ function App() {
     (course: Course) => {
       const url = courseUrl(course, academyMember);
       if (!url) return;
+      setLastCourse(course.uuid);
       const openEmbedded = () => {
         setWebViewRequest((previous) => ({ url, id: (previous?.id ?? 0) + 1 }));
         selectView("web-view");
@@ -148,7 +151,7 @@ function App() {
       }
       openEmbedded();
     },
-    [academyMember, courseOpenMode, selectView],
+    [academyMember, courseOpenMode, selectView, setLastCourse],
   );
 
   if (!academyAuthenticated) {
@@ -207,6 +210,7 @@ function App() {
               academyMember={academyMember}
               filter={query}
               courses={courses}
+              lastCourse={lastCourse}
               syncing={syncing}
               error={error}
               onRetry={retry}

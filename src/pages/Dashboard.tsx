@@ -27,6 +27,8 @@ type DashboardProps = {
   academyMember: boolean;
   filter: string;
   courses: Course[];
+  /** Uuid of the most recently opened course, shown under Resume. */
+  lastCourse: string | null;
   syncing: boolean;
   error: SyncError | null;
   onRetry: () => void;
@@ -42,6 +44,7 @@ function Dashboard({
   academyMember,
   filter,
   courses,
+  lastCourse,
   syncing,
   error,
   onRetry,
@@ -54,6 +57,7 @@ function Dashboard({
   const visibleCourses = courses.filter((course) =>
     matchesFilter(course, filter),
   );
+  const resumeCourse = courses.find((course) => course.uuid === lastCourse);
   const trimmedName = name.trim();
 
   // The Dashboard stays mounted while hidden, so refresh the greeting as the day moves on.
@@ -76,6 +80,22 @@ function Dashboard({
         </Badge>
       </div>
       <h1 className="text-[1.75rem] font-semibold">Dashboard</h1>
+      {resumeCourse && (
+        <section>
+          <h2 id="resume-heading" className="mt-4 text-[1.25rem] font-semibold">
+            Resume
+          </h2>
+          <CourseGrid
+            courses={[resumeCourse]}
+            favourites={favourites}
+            onToggleFavourite={onToggleFavourite}
+            onOpenCourse={onOpenCourse}
+            canOpenCourse={canOpenCourse}
+            labelledBy="resume-heading"
+            animations={animations}
+          />
+        </section>
+      )}
       <h2 id="courses-heading" className="mt-4 text-[1.25rem] font-semibold">
         Courses
       </h2>
