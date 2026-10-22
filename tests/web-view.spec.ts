@@ -661,6 +661,61 @@ test("a superseded delayed failure cannot hide a newer course or show an error",
   await expect(page.getByRole("button", { name: "Web View unavailable" })).toHaveCount(0);
 });
 
+test("returning after an inactive open failure retries the original course URL", async ({ page }) => {
+  const courseUrl = "https://academy.zerotomastery.io/courses/enrolled/test-course";
+  await page.evaluate(() => {
+    const mock = globalThis as typeof globalThis & {
+      __TAURI_CALLS__: InvokeCall[];
+      __delayTauriRejection: (command: string) => void;
+    };
+    mock.__TAURI_CALLS__.length = 0;
+    mock.__delayTauriRejection("show_web_view");
+  });
+  await page.getByRole("button", { name: "Test Course", exact: true }).click();
+  await expect.poll(() =>
+    page.evaluate(() =>
+      (globalThis as typeof globalThis & { __TAURI_CALLS__: InvokeCall[] })
+        .__TAURI_CALLS__.some((call) => call.command === "show_web_view"),
+    ),
+  ).toBe(true);
+  await page.keyboard.press("Alt+1");
+  await expect(page.getByTestId("web-view-slot")).toBeHidden();
+  await page.evaluate(() =>
+    (globalThis as typeof globalThis & {
+      __releaseTauriRejection: (command: string) => void;
+    }).__releaseTauriRejection("show_web_view"),
+  );
+  // The queued hide confirms the failed show has settled while inactive.
+  await expect.poll(() =>
+    page.evaluate(() =>
+      (globalThis as typeof globalThis & { __TAURI_CALLS__: InvokeCall[] })
+        .__TAURI_CALLS__.some((call) => call.command === "hide_web_view"),
+    ),
+  ).toBe(true);
+  await expect(page.getByRole("alertdialog")).toHaveCount(0);
+
+  await page.keyboard.press("Alt+3");
+  await expect.poll(() =>
+    page.evaluate(() =>
+      (globalThis as typeof globalThis & { __TAURI_CALLS__: InvokeCall[] })
+        .__TAURI_CALLS__.filter((call) => call.command === "show_web_view")
+        .map((call) => call.args.url),
+    ),
+  ).toEqual([courseUrl, courseUrl]);
+  await expect(page.getByRole("alertdialog")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Web View unavailable" })).toHaveCount(0);
+
+  await page.keyboard.press("Alt+1");
+  await page.keyboard.press("Alt+3");
+  await expect.poll(() =>
+    page.evaluate(() =>
+      (globalThis as typeof globalThis & { __TAURI_CALLS__: InvokeCall[] })
+        .__TAURI_CALLS__.filter((call) => call.command === "show_web_view")
+        .map((call) => call.args.url),
+    ),
+  ).toEqual([courseUrl, courseUrl, undefined]);
+});
+
 test("entering Web View from the sidebar collapses the app sidebar", async ({
   page,
 }) => {

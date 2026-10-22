@@ -96,11 +96,16 @@ export function WebView({
   const sidebarTooltipOpenRef = useRef(sidebarTooltipOpen);
   sidebarTooltipOpenRef.current = sidebarTooltipOpen;
   const loadedRequestId = useRef<number | null>(null);
+  const loadedRequestGeneration = useRef<number | null>(null);
   const mountGeneration = useRef(0);
   const openGeneration = useRef(0);
   const reportOpenError = useCallback((generation: number) => {
+    // Even an inactive failure invalidates its own marker, but never a newer one.
+    if (generation === loadedRequestGeneration.current) {
+      loadedRequestId.current = null;
+      loadedRequestGeneration.current = null;
+    }
     if (generation !== openGeneration.current) return;
-    loadedRequestId.current = null;
     // A partially opened native view would otherwise cover the error message.
     enqueue("hide_web_view");
     setOpenError(true);
@@ -125,6 +130,7 @@ export function WebView({
     const alreadyLoaded =
       initial !== null && initial.id === loadedRequestId.current;
     if (initial && !alreadyLoaded) loadedRequestId.current = initial.id;
+    loadedRequestGeneration.current = generation;
     setOpenError(false);
     setErrorDialogOpen(false);
     enqueue(
@@ -185,6 +191,7 @@ export function WebView({
     if (request.id === loadedRequestId.current) return;
     const generation = ++openGeneration.current;
     loadedRequestId.current = request.id;
+    loadedRequestGeneration.current = generation;
     setOpenError(false);
     setErrorDialogOpen(false);
     enqueue(
