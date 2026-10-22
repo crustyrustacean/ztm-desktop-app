@@ -1,5 +1,6 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { invoke, isTauri } from "@tauri-apps/api/core";
+import { Button } from "@/components/ui/button";
 
 type Bounds = { x: number; y: number; width: number; height: number };
 
@@ -76,6 +77,7 @@ export function WebView({
 }: WebViewProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [openError, setOpenError] = useState(false);
+  const [retryAttempt, setRetryAttempt] = useState(0);
   // Read when the web view is shown so opening a course doesn't create it twice.
   const requestRef = useRef(request);
   requestRef.current = request;
@@ -83,6 +85,12 @@ export function WebView({
   sidebarTooltipOpenRef.current = sidebarTooltipOpen;
   const loadedRequestId = useRef<number | null>(null);
   const mountGeneration = useRef(0);
+  const reportOpenError = useCallback(() => {
+    loadedRequestId.current = null;
+    // A partially opened native view would otherwise cover the error message.
+    enqueue("hide_web_view");
+    setOpenError(true);
+  }, []);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -111,7 +119,7 @@ export function WebView({
             session: initial?.session,
             authCheck,
           },
-      () => setOpenError(true),
+      reportOpenError,
     );
 
     // Covers sidebar collapse as well as window resizes.
@@ -124,7 +132,7 @@ export function WebView({
       window.removeEventListener("resize", sync);
       enqueue("hide_web_view");
     };
-  }, [active]);
+  }, [active, retryAttempt, reportOpenError]);
 
   useEffect(() => {
     const generation = ++mountGeneration.current;
@@ -163,9 +171,9 @@ export function WebView({
         session: request.session,
         authCheck,
       },
-      () => setOpenError(true),
+      reportOpenError,
     );
-  }, [active, request]);
+  }, [active, request, reportOpenError]);
 
   if (!isTauri()) {
     return (
@@ -183,12 +191,19 @@ export function WebView({
       className="h-[calc(100svh-3.5rem)] w-full"
     >
       {openError && (
-        <p
+        <div
           role="alert"
-          className="m-4 rounded-md border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive"
+          className="m-4 space-y-2 rounded-md border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive"
         >
-          Could not open the Web View.
-        </p>
+          <p>Could not open the Web View.</p>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setRetryAttempt((attempt) => attempt + 1)}
+          >
+            Try again
+          </Button>
+        </div>
       )}
     </div>
   );

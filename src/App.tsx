@@ -7,6 +7,15 @@ import Favourites from "./pages/Favourites";
 import Options from "./pages/Options";
 import { AppSidebar } from "@/components/app-sidebar";
 import {
+  AlertDialog,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
   InputGroup,
   InputGroupAddon,
   InputGroupInput,
@@ -45,6 +54,7 @@ function App() {
     desktop ? "web-view" : "dashboard",
   );
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [discordOpenError, setDiscordOpenError] = useState(false);
   const { courses, syncing, error, retry } = useCourses();
   const { favourites, toggleFavourite } = useFavourites();
   const { lastCourse, setLastCourse } = useLastCourse();
@@ -80,6 +90,15 @@ function App() {
     requestAnimationFrame(() => filterRef.current?.focus());
   }
 
+  async function handleOpenDiscord() {
+    try {
+      await openDiscord();
+    } catch (error) {
+      console.error("Could not open Discord in the app or browser", error);
+      setDiscordOpenError(true);
+    }
+  }
+
   // Shortcuts stay off on the sign-in screen, where there is no sidebar to jump around.
   const showHints = useShortcuts(
     shortcutModifier,
@@ -89,7 +108,7 @@ function App() {
           Digit2: () => selectView("favourites"),
           Digit3: () => selectView("web-view"),
           Digit4: () => selectView("options"),
-          Digit5: openDiscord,
+          Digit5: handleOpenDiscord,
           KeyS: focusFilter,
         }
       : {},
@@ -175,6 +194,7 @@ function App() {
         <AppSidebar
           view={view}
           onViewChange={selectView}
+          onOpenDiscord={handleOpenDiscord}
           onTooltipOpenChange={handleSidebarTooltipOpenChange}
           showHints={showHints}
         />
@@ -230,7 +250,7 @@ function App() {
           </div>
           <div id="web-view" hidden={view !== "web-view"}>
             <WebView
-              active={view === "web-view"}
+              active={view === "web-view" && !discordOpenError}
               request={webViewRequest}
               sidebarTooltipOpen={activeSidebarTooltip !== null}
             />
@@ -249,6 +269,20 @@ function App() {
           </div>
         </div>
       </SidebarProvider>
+      <AlertDialog open={discordOpenError} onOpenChange={setDiscordOpenError}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Could not open Discord</AlertDialogTitle>
+            <AlertDialogDescription>
+              Discord could not be opened in the app or your browser. Check that
+              Discord or a default browser is installed, then try again.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Dismiss</AlertDialogCancel>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </TooltipProvider>
   );
 }

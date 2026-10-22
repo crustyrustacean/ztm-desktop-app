@@ -10,7 +10,6 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@/components/ui/sidebar";
-import { openDiscord } from "@/lib/discord";
 import type { View } from "@/lib/view";
 
 type MenuItem = {
@@ -21,7 +20,6 @@ type MenuItem = {
   /** Identifies the item to `onTooltipOpenChange`. */
   tooltip: string;
   view?: View;
-  onClick?: () => void;
 };
 
 const menuItems: MenuItem[] = [
@@ -58,13 +56,13 @@ const menuItems: MenuItem[] = [
     icon: SiDiscord,
     shortcut: "5",
     tooltip: "discord",
-    onClick: openDiscord,
   },
 ];
 
 type AppSidebarProps = {
   view: View;
   onViewChange: (view: View) => void;
+  onOpenDiscord: () => void;
   onTooltipOpenChange?: (tooltip: string, open: boolean) => void;
   /** Show each item's shortcut key while the shortcut modifier is held. */
   showHints: boolean;
@@ -73,6 +71,7 @@ type AppSidebarProps = {
 export function AppSidebar({
   view,
   onViewChange,
+  onOpenDiscord,
   onTooltipOpenChange,
   showHints,
 }: AppSidebarProps) {
@@ -90,7 +89,7 @@ export function AppSidebar({
                 <SidebarMenuItem key={item.label}>
                   <SidebarMenuButton
                     onClick={() =>
-                      item.view ? onViewChange(item.view) : item.onClick?.()
+                      item.view ? onViewChange(item.view) : onOpenDiscord()
                     }
                     isActive={isActive}
                     aria-current={isActive ? "page" : undefined}

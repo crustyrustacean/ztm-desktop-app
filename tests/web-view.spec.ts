@@ -40,14 +40,14 @@ test.beforeEach(async ({ page }) => {
     const callbacks = new Map<number, (payload: unknown) => void>();
     const eventHandlers = new Map<string, (payload: unknown) => void>();
     const calls: InvokeCall[] = [];
-    const rejectedCommands = new Set<string>();
+    const rejectedCommands = new Map<string, number>();
     let callbackId = 0;
 
     Object.assign(globalThis, {
       isTauri: true,
       __TAURI_CALLS__: calls,
-      __rejectTauriCommand(command: string) {
-        rejectedCommands.add(command);
+      __rejectTauriCommand(command: string, count = 1) {
+        rejectedCommands.set(command, count);
       },
       __emitTauriEvent(event: string, payload: unknown = null) {
         eventHandlers.get(event)?.({ event, id: 1, payload });
@@ -63,8 +63,9 @@ test.beforeEach(async ({ page }) => {
         },
         async invoke(command: string, args: Record<string, unknown> = {}) {
           calls.push({ command, args });
-          if (rejectedCommands.has(command)) {
-            rejectedCommands.delete(command);
+          const rejections = rejectedCommands.get(command) ?? 0;
+          if (rejections > 0) {
+            rejectedCommands.set(command, rejections - 1);
             throw new Error(`${command} rejected for test`);
           }
           if (command === "load_state") return {};
@@ -116,6 +117,106 @@ test.beforeEach(async ({ page }) => {
   await page.goto("/");
   await authenticateAcademy(page);
 });
+
+for (const appFails of [false, true]) {
+  test(`Discord ${appFails ? "falls back to the browser" : "opens the app"} without an error dialog`, async ({
+    page,
+  }) => {
+    if (appFails) {
+      await page.evaluate(() =>
+        (
+          globalThis as typeof globalThis & {
+            __rejectTauriCommand: (command: string) => void;
+          }
+        ).__rejectTauriCommand("plugin:opener|open_url"),
+      );
+    }
+
+    await page.getByRole("button", { name: "Discord" }).click();
+    const appUrl =
+      "discord://-/channels/423464391791476747/423464391791476750";
+    const browserUrl =
+      "https://discord.com/channels/423464391791476747/423464391791476750";
+    await expect
+      .poll(() =>
+        page.evaluate(() =>
+          (
+            globalThis as typeof globalThis & { __TAURI_CALLS__: InvokeCall[] }
+          ).__TAURI_CALLS__
+            .filter((call) => call.command === "plugin:opener|open_url")
+            .map((call) => call.args.url),
+        ),
+      )
+      .toEqual(appFails ? [appUrl, browserUrl] : [appUrl]);
+    await expect(page.getByRole("alertdialog")).toHaveCount(0);
+  });
+}
+
+for (const trigger of ["sidebar", "shortcut"]) {
+  test(`Discord launch failure shows a dismissible error from the ${trigger}`, async ({
+    page,
+  }) => {
+    const pageErrors: string[] = [];
+    page.on("pageerror", (error) => pageErrors.push(error.message));
+    if (trigger === "shortcut") {
+      await page.getByRole("button", { name: "Web View", exact: true }).click();
+      await expect
+        .poll(() =>
+          page.evaluate(() =>
+            (
+              globalThis as typeof globalThis & { __TAURI_CALLS__: InvokeCall[] }
+            ).__TAURI_CALLS__.at(-1)?.command,
+          ),
+        )
+        .toBe("set_web_view_bounds");
+    }
+    await page.evaluate(() => {
+      const mock = globalThis as typeof globalThis & {
+        __TAURI_CALLS__: InvokeCall[];
+        __rejectTauriCommand: (command: string, count: number) => void;
+      };
+      mock.__TAURI_CALLS__.length = 0;
+      mock.__rejectTauriCommand("plugin:opener|open_url", 2);
+    });
+
+    if (trigger === "shortcut") {
+      await page.keyboard.press("Alt+5");
+    } else {
+      await page.getByRole("button", { name: "Discord" }).click();
+    }
+
+    const dialog = page.getByRole("alertdialog", { name: "Could not open Discord" });
+    await expect(dialog).toBeVisible();
+    await expect(dialog).toContainText(
+      "Discord could not be opened in the app or your browser.",
+    );
+    if (trigger === "shortcut") {
+      await expect
+        .poll(() =>
+          page.evaluate(() =>
+            (
+              globalThis as typeof globalThis & { __TAURI_CALLS__: InvokeCall[] }
+            ).__TAURI_CALLS__.at(-1)?.command,
+          ),
+        )
+        .toBe("hide_web_view");
+    }
+    await dialog.getByRole("button", { name: "Dismiss" }).click();
+    await expect(dialog).toHaveCount(0);
+    if (trigger === "shortcut") {
+      await expect
+        .poll(() =>
+          page.evaluate(() =>
+            (
+              globalThis as typeof globalThis & { __TAURI_CALLS__: InvokeCall[] }
+            ).__TAURI_CALLS__.some((call) => call.command === "show_web_view"),
+          ),
+        )
+        .toBe(true);
+    }
+    expect(pageErrors).toEqual([]);
+  });
+}
 
 test("the dashboard stays hidden until Academy authentication succeeds", async ({
   page,
@@ -340,12 +441,59 @@ test("the Web View error clears after a successful retry", async ({ page }) => {
     page.getByRole("alert").getByText("Could not open the Web View."),
   ).toBeVisible();
 
-  await page
-    .getByRole("button", { name: "Dashboard", exact: true })
-    .click();
-  await page.getByRole("button", { name: "Web View" }).click();
+  await page.getByRole("button", { name: "Try again" }).click();
 
   await expect(page.getByRole("alert")).toBeHidden();
+});
+
+test("a failed course Web View is hidden and retries the same URL", async ({ page }) => {
+  await page.evaluate(() => {
+    const mock = globalThis as typeof globalThis & {
+      __TAURI_CALLS__: InvokeCall[];
+      __rejectTauriCommand: (command: string, count: number) => void;
+    };
+    mock.__TAURI_CALLS__.length = 0;
+    mock.__rejectTauriCommand("show_web_view", 2);
+  });
+  await page.getByRole("button", { name: "Test Course", exact: true }).click();
+  const alert = page.getByRole("alert");
+  await expect(alert).toContainText("Could not open the Web View.");
+  await expect
+    .poll(() =>
+      page.evaluate(() =>
+        (
+          globalThis as typeof globalThis & { __TAURI_CALLS__: InvokeCall[] }
+        ).__TAURI_CALLS__.some((call) => call.command === "hide_web_view"),
+      ),
+    )
+    .toBe(true);
+
+  await alert.getByRole("button", { name: "Try again" }).click();
+  await expect(alert).toBeVisible();
+  await expect
+    .poll(() =>
+      page.evaluate(() =>
+        (
+          globalThis as typeof globalThis & { __TAURI_CALLS__: InvokeCall[] }
+        ).__TAURI_CALLS__.filter((call) => call.command === "show_web_view").length,
+      ),
+    )
+    .toBe(2);
+  await alert.getByRole("button", { name: "Try again" }).click();
+  await expect(alert).toBeHidden();
+  await expect
+    .poll(() =>
+      page.evaluate(() =>
+        (
+          globalThis as typeof globalThis & { __TAURI_CALLS__: InvokeCall[] }
+        ).__TAURI_CALLS__
+          .filter((call) => call.command === "show_web_view")
+          .map((call) => call.args.url),
+      ),
+    )
+    .toEqual(Array(3).fill(
+      "https://academy.zerotomastery.io/courses/enrolled/test-course",
+    ));
 });
 
 test("entering Web View from the sidebar collapses the app sidebar", async ({
