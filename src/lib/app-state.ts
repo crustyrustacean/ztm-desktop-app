@@ -12,6 +12,7 @@ export type AppState = {
   courseOpenMode?: CourseOpenMode | null;
   shortcutModifier?: ShortcutModifier | null;
   lastCourse?: string | null;
+  animations?: boolean | null;
 };
 
 export async function loadState(): Promise<AppState> {

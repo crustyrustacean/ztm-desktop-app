@@ -29,6 +29,7 @@ import {
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { useAcademyMember } from "@/hooks/use-academy-member";
+import { useAnimations } from "@/hooks/use-animations";
 import { useCourseOpenMode } from "@/hooks/use-course-open-mode";
 import { useCourses } from "@/hooks/use-courses";
 import { useFavourites } from "@/hooks/use-favourites";
@@ -61,6 +62,7 @@ function App() {
   const { name, setName } = useUserName();
   const { academyMember, setAcademyMember } = useAcademyMember();
   const { courseOpenMode, setCourseOpenMode } = useCourseOpenMode();
+  const { animations, setAnimations } = useAnimations();
   const { shortcutModifier, setShortcutModifier } = useShortcutModifier();
   const filterRef = useRef<HTMLInputElement>(null);
   const hasFilter = view === "dashboard" || view === "favourites";
@@ -237,6 +239,7 @@ function App() {
               onToggleFavourite={toggleFavourite}
               onOpenCourse={openCourse}
               canOpenCourse={canOpenCourse}
+              animations={animations}
             />
           </div>
           <div id="favourites" hidden={view !== "favourites"}>
@@ -247,6 +250,7 @@ function App() {
               onToggleFavourite={toggleFavourite}
               onOpenCourse={openCourse}
               canOpenCourse={canOpenCourse}
+              animations={animations}
             />
           </div>
           <div id="web-view" hidden={view !== "web-view"}>
@@ -266,6 +270,8 @@ function App() {
               onCourseOpenModeChange={setCourseOpenMode}
               shortcutModifier={shortcutModifier}
               onShortcutModifierChange={setShortcutModifier}
+              animations={animations}
+              onAnimationsChange={setAnimations}
             />
           </div>
         </div>

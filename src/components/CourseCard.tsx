@@ -11,6 +11,8 @@ type CourseCardProps = {
   onToggleFavourite: () => void;
   /** Opens the course; omitted when the course has no page to open. */
   onOpen?: () => void;
+  /** Plays the hover zoom; still skipped when the OS asks for reduced motion. */
+  animations: boolean;
 };
 
 /** Card for a single course. The whole card opens the course; the star toggles a favourite. */
@@ -20,6 +22,7 @@ function CourseCard({
   favourite,
   onToggleFavourite,
   onOpen,
+  animations,
 }: CourseCardProps) {
   // Remember which URL failed so a later URL change gets a fresh attempt.
   const [failedUrl, setFailedUrl] = useState<string | null>(null);
@@ -30,21 +33,30 @@ function CourseCard({
       className={cn(
         "relative h-full pt-0",
         onOpen &&
-          "transition-shadow has-[[data-open-course]:focus-visible]:ring-3 has-[[data-open-course]:focus-visible]:ring-ring/50 has-[[data-open-course]:hover]:shadow-md",
+          "transition-[box-shadow,scale] has-[[data-open-course]:focus-visible]:ring-3 has-[[data-open-course]:focus-visible]:ring-ring/50 has-[[data-open-course]:hover]:shadow-md",
+        onOpen &&
+          animations &&
+          "duration-200 ease-out motion-safe:has-[[data-open-course]:hover]:scale-[1.02]",
         !onOpen && "cursor-not-allowed",
       )}
     >
       {showImage ? (
-        <img
-          src={imageUrl}
-          alt=""
-          loading="lazy"
-          className={cn(
-            "aspect-video w-full bg-muted object-cover",
-            !onOpen && "opacity-60",
-          )}
-          onError={() => setFailedUrl(imageUrl)}
-        />
+        // Clips the image zoom so it doesn't spill over the title.
+        <div className="overflow-hidden">
+          <img
+            src={imageUrl}
+            alt=""
+            loading="lazy"
+            className={cn(
+              "aspect-video w-full bg-muted object-cover",
+              !onOpen && "opacity-60",
+              onOpen &&
+                animations &&
+                "transition-[scale] duration-300 ease-out motion-safe:group-has-[[data-open-course]:hover]/card:scale-105",
+            )}
+            onError={() => setFailedUrl(imageUrl)}
+          />
+        </div>
       ) : (
         // Placeholder for courses without artwork or whose image failed to load.
         <div

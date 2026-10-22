@@ -44,6 +44,7 @@ type DashboardProps = {
   onToggleFavourite: (uuid: string) => void;
   onOpenCourse: (course: Course) => void;
   canOpenCourse: (course: Course) => boolean;
+  animations: boolean;
 };
 
 function Dashboard({
@@ -60,6 +61,7 @@ function Dashboard({
   onToggleFavourite,
   onOpenCourse,
   canOpenCourse,
+  animations,
 }: DashboardProps) {
   const [errorDialogOpen, setErrorDialogOpen] = useState(true);
   useEffect(() => {
@@ -103,6 +105,7 @@ function Dashboard({
             onOpenCourse={onOpenCourse}
             canOpenCourse={canOpenCourse}
             labelledBy="resume-heading"
+            animations={animations}
           />
         </section>
       )}
@@ -174,6 +177,7 @@ function Dashboard({
           onToggleFavourite={onToggleFavourite}
           onOpenCourse={onOpenCourse}
           canOpenCourse={canOpenCourse}
+          animations={animations}
           labelledBy="courses-heading"
         />
       )}

@@ -9,6 +9,7 @@ type CourseGridProps = {
   onOpenCourse: (course: Course) => void;
   canOpenCourse: (course: Course) => boolean;
   labelledBy: string;
+  animations: boolean;
 };
 
 function CourseGrid({
@@ -18,6 +19,7 @@ function CourseGrid({
   onOpenCourse,
   canOpenCourse,
   labelledBy,
+  animations,
 }: CourseGridProps) {
   return (
     <ul
@@ -34,6 +36,7 @@ function CourseGrid({
             onOpen={
               canOpenCourse(course) ? () => onOpenCourse(course) : undefined
             }
+            animations={animations}
           />
         </li>
       ))}
