@@ -1248,3 +1248,32 @@ test("opening a course shows it under Resume on the Dashboard", async ({
     resume.getByRole("button", { name: "Second Course", exact: true }),
   ).toBeVisible();
 });
+
+test("the animations option applies to the Resume and Courses grids", async ({
+  page,
+}) => {
+  await page.getByRole("button", { name: "Second Course", exact: true }).click();
+  await page.getByRole("button", { name: "Dashboard" }).click();
+  const grids = [
+    page.getByRole("list", { name: "Resume" }),
+    page.getByRole("list", { name: "Courses" }),
+  ];
+  const hoveredScale = async (grid: (typeof grids)[number]) => {
+    const card = grid.locator('[data-slot="card"]', {
+      has: page.getByRole("heading", { name: "Second Course" }),
+    });
+    await card.getByRole("button", { name: "Second Course", exact: true }).hover();
+    return card.evaluate((element) => getComputedStyle(element).scale);
+  };
+
+  for (const grid of grids) {
+    await expect.poll(() => hoveredScale(grid)).toBe("1.02");
+  }
+
+  await page.getByRole("button", { name: "Options" }).click();
+  await page.getByRole("switch", { name: "Animations" }).click();
+  await page.getByRole("button", { name: "Dashboard" }).click();
+  for (const grid of grids) {
+    await expect.poll(() => hoveredScale(grid)).toBe("none");
+  }
+});
