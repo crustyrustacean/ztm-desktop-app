@@ -1,16 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { invoke, isTauri } from "@tauri-apps/api/core";
+import { AppAlertDialog } from "@/components/app-alert-dialog";
 import { Button } from "@/components/ui/button";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
 
 type Bounds = { x: number; y: number; width: number; height: number };
 
@@ -238,39 +229,36 @@ export function WebView({
           Web View unavailable
         </Button>
       )}
-      <AlertDialog
+      <AppAlertDialog
         open={active && errorDialogOpen}
         onOpenChange={setErrorDialogOpen}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>
-              {desktop ? "Could not open the Web View" : "Web View requires the desktop app"}
-            </AlertDialogTitle>
-            <AlertDialogDescription>
-              {desktop ? "The Web View could not be opened. Please try again." : (
-                <>
-                  Web View is only available in the ZTM desktop app.
-                  Open the desktop app to continue.
-                  {import.meta.env.DEV && (
-                    <> For development, run npm run tauri dev and use the desktop window, not the browser preview.</>
-                  )}
-                </>
+        title={
+          desktop
+            ? "Could not open the Web View"
+            : "Web View requires the desktop app"
+        }
+        description={
+          desktop ? (
+            "The Web View could not be opened. Please try again."
+          ) : (
+            <>
+              Web View is only available in the ZTM desktop app. Open the
+              desktop app to continue.
+              {import.meta.env.DEV && (
+                <> For development, run npm run tauri dev and use the desktop window, not the browser preview.</>
               )}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Dismiss</AlertDialogCancel>
-            {desktop && (
-              <AlertDialogAction
-                onClick={() => setRetryAttempt((attempt) => attempt + 1)}
-              >
-                Try again
-              </AlertDialogAction>
-            )}
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+            </>
+          )
+        }
+        action={
+          desktop
+            ? {
+                label: "Try again",
+                onClick: () => setRetryAttempt((attempt) => attempt + 1),
+              }
+            : undefined
+        }
+      />
     </div>
   );
 }

@@ -5,16 +5,8 @@ import { SearchIcon } from "lucide-react";
 import Dashboard from "./pages/Dashboard";
 import Favourites from "./pages/Favourites";
 import Options from "./pages/Options";
+import { AppAlertDialog } from "@/components/app-alert-dialog";
 import { AppSidebar } from "@/components/app-sidebar";
-import {
-  AlertDialog,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
 import {
   InputGroup,
   InputGroupAddon,
@@ -276,20 +268,12 @@ function App() {
           </div>
         </div>
       </SidebarProvider>
-      <AlertDialog open={discordOpenError} onOpenChange={setDiscordOpenError}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Could not open Discord</AlertDialogTitle>
-            <AlertDialogDescription>
-              Discord could not be opened in the app or your browser. Check that
-              Discord or a default browser is installed, then try again.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Dismiss</AlertDialogCancel>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <AppAlertDialog
+        open={discordOpenError}
+        onOpenChange={setDiscordOpenError}
+        title="Could not open Discord"
+        description="Discord could not be opened in the app or your browser. Check that Discord or a default browser is installed, then try again."
+      />
     </TooltipProvider>
   );
 }

@@ -1,16 +1,7 @@
 import { useEffect, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
+import { AppAlertDialog } from "@/components/app-alert-dialog";
 import CourseGrid from "@/components/CourseGrid";
 import type { SyncError } from "@/hooks/use-courses";
 import { matchesFilter, type Course } from "@/lib/course";
@@ -128,41 +119,35 @@ function Dashboard({
           >
             Course loading unavailable
           </Button>
-          <AlertDialog
+          <AppAlertDialog
             open={active && !syncing && errorDialogOpen}
             onOpenChange={setErrorDialogOpen}
-          >
-            <AlertDialogContent>
-              <AlertDialogHeader>
-                <AlertDialogTitle>
-                  {error === "desktop-only"
-                    ? "Course loading requires the desktop app"
-                    : courses.length > 0
-                      ? "Could not update courses"
-                      : "Could not load courses"}
-                </AlertDialogTitle>
-                <AlertDialogDescription>
-                  {error === "desktop-only" ? (
-                    <>
-                      Course loading is only available in the ZTM desktop app.
-                      Open the desktop app to continue.
-                      {import.meta.env.DEV && (
-                        <> For development, run npm run tauri dev and use the desktop window, not the browser preview.</>
-                      )}
-                    </>
-                  ) : errorMessage(courses.length > 0)}
-                </AlertDialogDescription>
-              </AlertDialogHeader>
-              <AlertDialogFooter>
-                <AlertDialogCancel>Dismiss</AlertDialogCancel>
-                {error === "sync-failed" && (
-                  <AlertDialogAction onClick={onRetry}>
-                    Retry
-                  </AlertDialogAction>
-                )}
-              </AlertDialogFooter>
-            </AlertDialogContent>
-          </AlertDialog>
+            title={
+              error === "desktop-only"
+                ? "Course loading requires the desktop app"
+                : courses.length > 0
+                  ? "Could not update courses"
+                  : "Could not load courses"
+            }
+            description={
+              error === "desktop-only" ? (
+                <>
+                  Course loading is only available in the ZTM desktop app.
+                  Open the desktop app to continue.
+                  {import.meta.env.DEV && (
+                    <> For development, run npm run tauri dev and use the desktop window, not the browser preview.</>
+                  )}
+                </>
+              ) : (
+                errorMessage(courses.length > 0)
+              )
+            }
+            action={
+              error === "sync-failed"
+                ? { label: "Retry", onClick: onRetry }
+                : undefined
+            }
+          />
         </>
       )}
       {courses.length > 0 && visibleCourses.length === 0 && (
