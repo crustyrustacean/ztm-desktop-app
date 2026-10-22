@@ -49,6 +49,8 @@ pub struct AppState {
     shortcut_modifier: Option<ShortcutModifier>,
     /// Uuid of the course the user opened most recently, shown under Resume.
     last_course: Option<String>,
+    /// Whether UI animations such as the course card hover zoom play. Unset means on.
+    animations: Option<bool>,
 }
 
 fn state_path(app: &tauri::AppHandle) -> Result<PathBuf, String> {
@@ -113,12 +115,13 @@ mod tests {
             course_open_mode: Some(CourseOpenMode::Window),
             shortcut_modifier: Some(ShortcutModifier::Ctrl),
             last_course: Some("39fcbbb8".into()),
+            animations: Some(false),
         };
         write_state(&path, &state).unwrap();
         assert_eq!(read_state(&path), state);
         assert_eq!(
             serde_json::from_slice::<serde_json::Value>(&fs::read(&path).unwrap()).unwrap(),
-            serde_json::json!({ "theme": "dark", "favourites": ["39fcbbb8"], "name": "Mark", "academyMember": false, "courseOpenMode": "window", "shortcutModifier": "ctrl", "lastCourse": "39fcbbb8" })
+            serde_json::json!({ "theme": "dark", "favourites": ["39fcbbb8"], "name": "Mark", "academyMember": false, "courseOpenMode": "window", "shortcutModifier": "ctrl", "lastCourse": "39fcbbb8", "animations": false })
         );
     }
 
