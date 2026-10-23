@@ -552,7 +552,7 @@ test("a URL-only fullscreen fallback retains the durable playback checkpoint", (
   assert.equal(media.playbackRate, 1.5);
 });
 
-test("native Academy webviews initialize the progress relay in every frame", () => {
+test("only course-content webviews initialize the progress relay in every frame", () => {
   const rust = readFileSync(
     new URL("../src-tauri/src/web_view.rs", import.meta.url),
     "utf8",
@@ -561,6 +561,10 @@ test("native Academy webviews initialize the progress relay in every frame", () 
   assert.equal(
     rust.match(/initialization_script_for_all_frames/g)?.length,
     3,
+  );
+  assert.match(
+    rust,
+    /if close_on_authentication\s*\{\s*builder\s*\}\s*else\s*\{\s*builder\.initialization_script_for_all_frames/,
   );
 });
 
