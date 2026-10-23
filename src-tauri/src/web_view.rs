@@ -27,10 +27,9 @@ const AUTHENTICATION_ROUTES: &[&str] = &["sign_in", "login", "identity"];
 const MAIN_WINDOW_LABEL: &str = "main";
 const HOME_URL: &str = "https://academy.zerotomastery.io/";
 // The Academy root redirects signed-out users to ZTM's public marketing site,
-// whose sign-in launcher is not a dependable WebKitGTK entry point. The explicit
-// sign-in route redirects through Teachable SSO and returns authenticated users
-// to the Academy.
-#[cfg(target_os = "linux")]
+// whose sign-in launcher is not a dependable embedded-webview entry point. The
+// explicit sign-in route redirects through Teachable SSO and returns authenticated
+// users to the Academy.
 const LOGIN_URL: &str = "https://academy.zerotomastery.io/sign_in";
 /// Removes the site's navigation and handles fullscreen changes (see academy_init.js).
 const INIT_SCRIPT: &str = include_str!("academy_init.js");
@@ -284,6 +283,11 @@ pub async fn show_web_view<R: Runtime>(
     theme: State<'_, WebViewTheme>,
 ) -> Result<(), String> {
     destroy_fullscreen(window.app_handle())?;
+    if auth_check {
+        let url = course_url(url.as_deref().unwrap_or(LOGIN_URL))?;
+        let theme = *theme.0.lock().map_err(|e| e.to_string())?;
+        return show_course_window(window.app_handle(), url, session, theme, true);
+    }
     let url = url.as_deref().map(course_url).transpose()?;
     let webview = match window.get_webview(LABEL) {
         Some(webview) => {
@@ -298,18 +302,12 @@ pub async fn show_web_view<R: Runtime>(
                 None => HOME_URL.parse().map_err(|e| format!("{e}"))?,
             };
             let theme = *theme.0.lock().map_err(|e| e.to_string())?;
-            let authentication_app = window.app_handle().clone();
             let builder = WebviewBuilder::new(LABEL, WebviewUrl::External(url))
                 .initialization_script_for_all_frames(init_script(
                     "embedded",
                     session.as_ref(),
                     theme,
-                ))
-                .on_page_load(move |_webview, payload| {
-                    if auth_check {
-                        report_authentication(&authentication_app, payload.event(), payload.url());
-                    }
-                });
+                ));
             window
                 .add_child(
                     builder,
@@ -544,14 +542,19 @@ fn show_course_window<R: Runtime>(
             .map_err(|error| error.to_string())?
             .join(ACADEMY_DATA_DIR),
     );
-    // Authentication providers can reject or malfunction in WebKitGTK when any
-    // document-start script is present. Linux therefore starts with a plain page
-    // and evaluates the enhancement script after trusted Academy loads finish.
+    // Authentication providers can reject or malfunction when a document-start
+    // script is present. Login windows therefore remain plain on every platform.
+    // Linux course windows also start plain and evaluate the enhancement script
+    // after trusted Academy loads finish.
     // eval reaches only the top frame: cross-origin player iframes have no media
     // relay, so timestamp capture/restore is limited to top/same-origin players.
     // Windows/macOS retain all-frame document-start injection.
     #[cfg(not(target_os = "linux"))]
-    let builder = builder.initialization_script_for_all_frames(init_script("window", None, theme));
+    let builder = if close_on_authentication {
+        builder
+    } else {
+        builder.initialization_script_for_all_frames(init_script("window", None, theme))
+    };
     builder.build().map(|_| ()).map_err(|e| e.to_string())
 }
 
