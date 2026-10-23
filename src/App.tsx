@@ -48,6 +48,7 @@ function App() {
   );
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [discordOpenError, setDiscordOpenError] = useState(false);
+  const [signOutError, setSignOutError] = useState(false);
   const { courses, syncing, error, retry } = useCourses();
   const { favourites, toggleFavourite } = useFavourites();
   const { lastCourse, setLastCourse } = useLastCourse();
@@ -91,6 +92,21 @@ function App() {
       console.error("Could not open Discord in the app or browser", error);
       setDiscordOpenError(true);
     }
+  }
+
+  async function handleSignOut() {
+    // A browser preview has no Academy session to remove or sign-in to return to.
+    if (!desktop) return;
+    try {
+      await invoke("sign_out");
+    } catch (error) {
+      console.error("Could not sign out of the Academy", error);
+      setSignOutError(true);
+      return;
+    }
+    // The next session starts from the Academy home page, not the last course shown.
+    setWebViewRequest(null);
+    setAcademyAuthenticated(false);
   }
 
   // Shortcuts stay off on the sign-in screen, where there is no sidebar to jump around.
@@ -264,6 +280,7 @@ function App() {
               onShortcutModifierChange={setShortcutModifier}
               animations={animations}
               onAnimationsChange={setAnimations}
+              onSignOut={handleSignOut}
             />
           </div>
         </div>
@@ -273,6 +290,12 @@ function App() {
         onOpenChange={setDiscordOpenError}
         title="Could not open Discord"
         description="Discord could not be opened in the app or your browser. Check that Discord or a default browser is installed, then try again."
+      />
+      <AppAlertDialog
+        open={signOutError}
+        onOpenChange={setSignOutError}
+        title="Could not sign out"
+        description="Your Academy sign-in could not be removed. Try again, or restart the app first."
       />
     </TooltipProvider>
   );
