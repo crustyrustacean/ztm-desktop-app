@@ -18,11 +18,13 @@ import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { useAcademyMember } from "@/hooks/use-academy-member";
 import { useAnimations } from "@/hooks/use-animations";
+import { useStartFullscreen } from "@/hooks/use-start-fullscreen";
 import { useCourseOpenMode } from "@/hooks/use-course-open-mode";
 import { useCourses } from "@/hooks/use-courses";
 import { useFavourites } from "@/hooks/use-favourites";
 import { useLastCourse } from "@/hooks/use-last-course";
 import { useShortcutModifier } from "@/hooks/use-shortcut-modifier";
+import { useFullscreenShortcut } from "@/hooks/use-fullscreen-shortcut";
 import { useShortcuts } from "@/hooks/use-shortcuts";
 import { useUserName } from "@/hooks/use-user-name";
 import type {
@@ -55,6 +57,7 @@ function App() {
   const { academyMember, setAcademyMember } = useAcademyMember();
   const { courseOpenMode, setCourseOpenMode } = useCourseOpenMode();
   const { animations, setAnimations } = useAnimations();
+  const { startFullscreen, setStartFullscreen } = useStartFullscreen();
   const { shortcutModifier, setShortcutModifier } = useShortcutModifier();
   const filterRef = useRef<HTMLInputElement>(null);
   const hasFilter = view === "dashboard" || view === "favourites";
@@ -92,6 +95,8 @@ function App() {
       setDiscordOpenError(true);
     }
   }
+
+  useFullscreenShortcut(desktop);
 
   // Shortcuts stay off on the sign-in screen, where there is no sidebar to jump around.
   const showHints = useShortcuts(
@@ -264,6 +269,8 @@ function App() {
               onShortcutModifierChange={setShortcutModifier}
               animations={animations}
               onAnimationsChange={setAnimations}
+              startFullscreen={startFullscreen}
+              onStartFullscreenChange={setStartFullscreen}
             />
           </div>
         </div>

@@ -1249,6 +1249,29 @@ test("opening a course shows it under Resume on the Dashboard", async ({
   ).toBeVisible();
 });
 
+test("the start in fullscreen option is saved to state", async ({ page }) => {
+  await page.getByRole("button", { name: "Options" }).click();
+  const option = page.getByRole("switch", { name: "Start app in fullscreen" });
+  await expect(option).not.toBeChecked();
+
+  await option.click();
+  await expect(option).toBeChecked();
+  await expect
+    .poll(() =>
+      page.evaluate(() =>
+        (
+          globalThis as typeof globalThis & { __TAURI_CALLS__: InvokeCall[] }
+        ).__TAURI_CALLS__.some(
+          (call) =>
+            call.command === "save_state" &&
+            (call.args.state as { startFullscreen?: boolean })
+              .startFullscreen === true,
+        ),
+      ),
+    )
+    .toBe(true);
+});
+
 test("the animations option applies to the Resume and Courses grids", async ({
   page,
 }) => {

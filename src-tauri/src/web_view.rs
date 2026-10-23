@@ -24,7 +24,7 @@ const DEMOTED_EVENT: &str = "web-view-demoted";
 /// Unlocks the local shell after the Academy finishes an authenticated page load.
 const AUTHENTICATED_EVENT: &str = "academy-authenticated";
 const AUTHENTICATION_ROUTES: &[&str] = &["sign_in", "login", "identity"];
-const MAIN_WINDOW_LABEL: &str = "main";
+pub(crate) const MAIN_WINDOW_LABEL: &str = "main";
 const HOME_URL: &str = "https://academy.zerotomastery.io/";
 // The Academy root redirects signed-out users to ZTM's public marketing site,
 // whose sign-in launcher is not a dependable embedded-webview entry point. The
@@ -184,6 +184,45 @@ pub struct FullscreenWindows(Mutex<HashSet<String>>);
 /// Prevents the DOM event and native window event from promoting the same child twice.
 #[derive(Default)]
 pub struct PromotionState(Mutex<bool>);
+
+/// Whether the main window itself should be fullscreen, as opposed to WebView2
+/// fullscreening it for an embedded video. Promotion restores the main window to
+/// this state, and the native fallback ignores fullscreen the shell asked for.
+pub struct ShellFullscreen(Mutex<bool>);
+
+impl ShellFullscreen {
+    /// Starts from the saved "Start app in fullscreen" option rather than the window,
+    /// since the platform may not report fullscreen until after its first resizes.
+    pub fn new(fullscreen: bool) -> Self {
+        Self(Mutex::new(fullscreen))
+    }
+
+    fn get(&self) -> bool {
+        self.0.lock().map(|fullscreen| *fullscreen).unwrap_or(false)
+    }
+}
+
+#[derive(Debug, PartialEq)]
+enum MainWindowChange {
+    /// WebView2 fullscreened the window for an embedded page.
+    Promote,
+    /// The user left the shell's fullscreen through the platform.
+    ShellExited,
+    None,
+}
+
+fn main_window_change(
+    shell_fullscreen: bool,
+    fullscreen: bool,
+    promoting: bool,
+) -> MainWindowChange {
+    match (shell_fullscreen, fullscreen) {
+        (false, true) => MainWindowChange::Promote,
+        // Promotion briefly toggles the window; only a settled exit is the user's.
+        (true, false) if !promoting => MainWindowChange::ShellExited,
+        _ => MainWindowChange::None,
+    }
+}
 
 /// A fullscreen window can emit startup resize events before the platform reports it
 /// as fullscreen. It may only be disposed after fullscreen has actually been observed.
@@ -569,6 +608,7 @@ fn promote_embedded<R: Runtime>(
     let window = webview.window();
     let url = course_url(webview.url().map_err(|e| e.to_string())?.as_str())?;
     let app = window.app_handle();
+    let shell_fullscreen = app.state::<ShellFullscreen>().get();
     destroy_fullscreen(app)?;
 
     // End fullscreen in the child before hiding it. Otherwise the native child
@@ -582,8 +622,11 @@ fn promote_embedded<R: Runtime>(
     webview.hide().map_err(|e| e.to_string())?;
     // Tauri's Windows runtime automatically fullscreens the parent window when
     // WebView2 reports a fullscreen element. Counter that native transition; the
-    // dedicated replica below is the only window that should become fullscreen.
-    window.set_fullscreen(false).map_err(|e| e.to_string())?;
+    // dedicated replica below is the only window that should become fullscreen
+    // for the page. A shell that started fullscreen stays fullscreen behind it.
+    window
+        .set_fullscreen(shell_fullscreen)
+        .map_err(|e| e.to_string())?;
 
     let fullscreen_init = init_script("fullscreen", session.as_ref(), theme);
     let fallback_session = session.unwrap_or_else(|| PageSession::at_url(url.clone()));
@@ -628,7 +671,9 @@ fn promote_embedded<R: Runtime>(
     };
     // Building the new native window gives any queued WebView2 fullscreen event
     // time to reach Tauri. Restore the parent again after that event is drained.
-    window.set_fullscreen(false).map_err(|e| e.to_string())?;
+    window
+        .set_fullscreen(shell_fullscreen)
+        .map_err(|e| e.to_string())?;
 
     // The standalone fullscreen window now owns the Academy page. Close the child
     // webview instead of retaining a hidden duplicate, then return the app shell
@@ -693,18 +738,53 @@ fn promote_once<R: Runtime>(
 /// Native fallback for WebView2, which can fullscreen the parent window without the
 /// page-level fullscreen event reliably crossing an embedded video iframe boundary.
 pub fn handle_window_event<R: Runtime>(window: &Window<R>, event: &WindowEvent) {
-    if !matches!(event, WindowEvent::Resized(_)) || !matches!(window.is_fullscreen(), Ok(true)) {
+    if !matches!(event, WindowEvent::Resized(_)) || window.label() != MAIN_WINDOW_LABEL {
         return;
+    }
+    let Ok(fullscreen) = window.is_fullscreen() else {
+        return;
+    };
+    let shell = window.state::<ShellFullscreen>();
+    let state = window.state::<PromotionState>();
+    let promoting = state.0.lock().map(|promoting| *promoting).unwrap_or(true);
+    match main_window_change(shell.get(), fullscreen, promoting) {
+        MainWindowChange::Promote => {}
+        MainWindowChange::ShellExited => {
+            if let Ok(mut shell) = shell.0.lock() {
+                *shell = false;
+            }
+            return;
+        }
+        MainWindowChange::None => return,
     }
     let Some(webview) = window.get_webview(LABEL) else {
         return;
     };
-    let state = window.state::<PromotionState>();
     let theme = window.state::<WebViewTheme>();
     let theme = theme.0.lock().map(|theme| *theme).unwrap_or_default();
     if let Err(error) = promote_once(webview, None, &state, theme) {
         eprintln!("web view fullscreen promotion failed: {error}");
     }
+}
+
+/// Toggles the main window's own fullscreen (F11), from the shell or its embedded page.
+#[tauri::command]
+pub fn toggle_fullscreen<R: Runtime>(
+    webview: Webview<R>,
+    shell: State<'_, ShellFullscreen>,
+) -> Result<(), String> {
+    let label = webview.label();
+    if label != MAIN_WINDOW_LABEL && label != LABEL {
+        return Err(format!(
+            "web view {label} cannot toggle the app's fullscreen"
+        ));
+    }
+    let window = webview.window();
+    let fullscreen = !window.is_fullscreen().map_err(|e| e.to_string())?;
+    // Record the shell's choice first so the resize it causes is not mistaken for
+    // WebView2 fullscreening the window for an embedded page.
+    *shell.0.lock().map_err(|e| e.to_string())? = fullscreen;
+    window.set_fullscreen(fullscreen).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -804,10 +884,10 @@ fn place<R: Runtime>(webview: &Webview<R>, bounds: Bounds) -> Result<(), String>
 #[cfg(test)]
 mod tests {
     use super::{
-        AUTHENTICATION_ROUTES, FullscreenWindowLifecycle, INIT_SCRIPT, PageSession,
-        THEME_STORAGE_KEY, WebTheme, course_url, init_script, is_academy_exit_navigation,
-        is_authenticated_academy_url, page_enhancement_script, should_enhance_page,
-        theme_update_script,
+        AUTHENTICATION_ROUTES, FullscreenWindowLifecycle, INIT_SCRIPT, MainWindowChange,
+        PageSession, THEME_STORAGE_KEY, WebTheme, course_url, init_script,
+        is_academy_exit_navigation, is_authenticated_academy_url, main_window_change,
+        page_enhancement_script, should_enhance_page, theme_update_script,
     };
     use tauri::{Url, webview::PageLoadEvent};
 
@@ -999,6 +1079,34 @@ mod tests {
         assert!(
             !lifecycle.observe(false),
             "repeated exit resizes must not request demotion twice"
+        );
+    }
+
+    #[test]
+    fn native_fallback_ignores_fullscreen_the_shell_asked_for() {
+        assert_eq!(
+            main_window_change(false, true, false),
+            MainWindowChange::Promote,
+            "WebView2 fullscreening a windowed shell must promote the page"
+        );
+        assert_eq!(
+            main_window_change(true, true, false),
+            MainWindowChange::None,
+            "a shell that started fullscreen must not promote on resize"
+        );
+        assert_eq!(
+            main_window_change(true, false, false),
+            MainWindowChange::ShellExited,
+            "the user leaving fullscreen must be remembered"
+        );
+        assert_eq!(
+            main_window_change(true, false, true),
+            MainWindowChange::None,
+            "promotion's own toggling must not clear the shell's fullscreen"
+        );
+        assert_eq!(
+            main_window_change(false, false, false),
+            MainWindowChange::None
         );
     }
 }

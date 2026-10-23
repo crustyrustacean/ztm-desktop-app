@@ -51,6 +51,15 @@ pub struct AppState {
     last_course: Option<String>,
     /// Whether UI animations such as the course card hover zoom play. Unset means on.
     animations: Option<bool>,
+    /// Whether the main window opens fullscreen. Unset means windowed.
+    start_fullscreen: Option<bool>,
+}
+
+/// Read synchronously at startup so the window is fullscreened before it is used.
+pub(crate) fn start_fullscreen(app: &tauri::AppHandle) -> bool {
+    state_path(app)
+        .map(|path| read_state(&path).start_fullscreen.unwrap_or(false))
+        .unwrap_or(false)
 }
 
 fn state_path(app: &tauri::AppHandle) -> Result<PathBuf, String> {
@@ -116,12 +125,13 @@ mod tests {
             shortcut_modifier: Some(ShortcutModifier::Ctrl),
             last_course: Some("39fcbbb8".into()),
             animations: Some(false),
+            start_fullscreen: Some(true),
         };
         write_state(&path, &state).unwrap();
         assert_eq!(read_state(&path), state);
         assert_eq!(
             serde_json::from_slice::<serde_json::Value>(&fs::read(&path).unwrap()).unwrap(),
-            serde_json::json!({ "theme": "dark", "favourites": ["39fcbbb8"], "name": "Mark", "academyMember": false, "courseOpenMode": "window", "shortcutModifier": "ctrl", "lastCourse": "39fcbbb8", "animations": false })
+            serde_json::json!({ "theme": "dark", "favourites": ["39fcbbb8"], "name": "Mark", "academyMember": false, "courseOpenMode": "window", "shortcutModifier": "ctrl", "lastCourse": "39fcbbb8", "animations": false, "startFullscreen": true })
         );
     }
 
