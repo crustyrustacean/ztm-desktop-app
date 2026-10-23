@@ -38,7 +38,8 @@ pub fn run() {
             web_view::open_course_window,
             web_view::web_view_fullscreen,
             web_view::set_web_view_theme,
-            web_view::toggle_fullscreen
+            web_view::toggle_fullscreen,
+            web_view::shell_fullscreen
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

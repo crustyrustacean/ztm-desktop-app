@@ -16,6 +16,7 @@ fn main() {
             "web_view_fullscreen",
             "set_web_view_theme",
             "toggle_fullscreen",
+            "shell_fullscreen",
         ]),
     ))
     .expect("failed to run tauri-build");

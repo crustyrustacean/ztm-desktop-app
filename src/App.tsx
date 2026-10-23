@@ -24,7 +24,7 @@ import { useCourses } from "@/hooks/use-courses";
 import { useFavourites } from "@/hooks/use-favourites";
 import { useLastCourse } from "@/hooks/use-last-course";
 import { useShortcutModifier } from "@/hooks/use-shortcut-modifier";
-import { useFullscreenShortcut } from "@/hooks/use-fullscreen-shortcut";
+import { useFullscreen } from "@/hooks/use-fullscreen";
 import { useShortcuts } from "@/hooks/use-shortcuts";
 import { useUserName } from "@/hooks/use-user-name";
 import type {
@@ -96,7 +96,7 @@ function App() {
     }
   }
 
-  useFullscreenShortcut(desktop);
+  const { fullscreen, toggleFullscreen } = useFullscreen(desktop);
 
   // Shortcuts stay off on the sign-in screen, where there is no sidebar to jump around.
   const showHints = useShortcuts(
@@ -196,6 +196,8 @@ function App() {
           onOpenDiscord={handleOpenDiscord}
           onTooltipOpenChange={handleSidebarTooltipOpenChange}
           showHints={showHints}
+          fullscreen={fullscreen}
+          onToggleFullscreen={toggleFullscreen}
         />
         <div className="min-w-0 flex-1">
           <header className="flex h-14 items-center border-b px-4">

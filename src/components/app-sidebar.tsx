@@ -1,10 +1,18 @@
 import type { ComponentType } from "react";
-import { Globe, LayoutDashboard, Settings, Star } from "lucide-react";
+import {
+  Globe,
+  LayoutDashboard,
+  Maximize,
+  Minimize,
+  Settings,
+  Star,
+} from "lucide-react";
 import { SiDiscord } from "react-icons/si";
 import { Kbd } from "@/components/ui/kbd";
 import {
   Sidebar,
   SidebarContent,
+  SidebarFooter,
   SidebarGroup,
   SidebarMenu,
   SidebarMenuButton,
@@ -66,6 +74,9 @@ type AppSidebarProps = {
   onTooltipOpenChange?: (tooltip: string, open: boolean) => void;
   /** Show each item's shortcut key while the shortcut modifier is held. */
   showHints: boolean;
+  /** Labels the fullscreen item, the way out of fullscreen's hidden window controls. */
+  fullscreen: boolean;
+  onToggleFullscreen: () => void;
 };
 
 export function AppSidebar({
@@ -74,9 +85,15 @@ export function AppSidebar({
   onOpenDiscord,
   onTooltipOpenChange,
   showHints,
+  fullscreen,
+  onToggleFullscreen,
 }: AppSidebarProps) {
   const handleTooltipOpenChange = (tooltip: string) => (open: boolean) =>
     onTooltipOpenChange?.(tooltip, open);
+  const FullscreenIcon = fullscreen ? Minimize : Maximize;
+  const fullscreenLabel = fullscreen
+    ? "Exit Fullscreen (F11)"
+    : "Enter Fullscreen (F11)";
 
   return (
     <Sidebar collapsible="icon">
@@ -110,6 +127,20 @@ export function AppSidebar({
           </SidebarMenu>
         </SidebarGroup>
       </SidebarContent>
+      <SidebarFooter>
+        <SidebarMenu>
+          <SidebarMenuItem>
+            <SidebarMenuButton
+              onClick={onToggleFullscreen}
+              tooltip={fullscreenLabel}
+              onTooltipOpenChange={handleTooltipOpenChange("fullscreen")}
+            >
+              <FullscreenIcon />
+              <span>{fullscreenLabel}</span>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+        </SidebarMenu>
+      </SidebarFooter>
     </Sidebar>
   );
 }

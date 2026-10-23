@@ -21,6 +21,8 @@ const ACADEMY_DATA_DIR: &str = "academy-webview";
 const PROMOTED_EVENT: &str = "web-view-promoted";
 /// Returns the standalone page's current session to the embedded view.
 const DEMOTED_EVENT: &str = "web-view-demoted";
+/// Tells the shell whether it is fullscreen, so it can offer a way out.
+const SHELL_FULLSCREEN_EVENT: &str = "shell-fullscreen-changed";
 /// Unlocks the local shell after the Academy finishes an authenticated page load.
 const AUTHENTICATED_EVENT: &str = "academy-authenticated";
 const AUTHENTICATION_ROUTES: &[&str] = &["sign_in", "login", "identity"];
@@ -199,6 +201,12 @@ impl ShellFullscreen {
 
     fn get(&self) -> bool {
         self.0.lock().map(|fullscreen| *fullscreen).unwrap_or(false)
+    }
+
+    fn set<R: Runtime>(&self, app: &tauri::AppHandle<R>, fullscreen: bool) -> Result<(), String> {
+        *self.0.lock().map_err(|e| e.to_string())? = fullscreen;
+        app.emit_to(MAIN_WINDOW_LABEL, SHELL_FULLSCREEN_EVENT, fullscreen)
+            .map_err(|e| e.to_string())
     }
 }
 
@@ -750,8 +758,8 @@ pub fn handle_window_event<R: Runtime>(window: &Window<R>, event: &WindowEvent) 
     match main_window_change(shell.get(), fullscreen, promoting) {
         MainWindowChange::Promote => {}
         MainWindowChange::ShellExited => {
-            if let Ok(mut shell) = shell.0.lock() {
-                *shell = false;
+            if let Err(error) = shell.set(window.app_handle(), false) {
+                eprintln!("recording the shell leaving fullscreen failed: {error}");
             }
             return;
         }
@@ -783,8 +791,14 @@ pub fn toggle_fullscreen<R: Runtime>(
     let fullscreen = !window.is_fullscreen().map_err(|e| e.to_string())?;
     // Record the shell's choice first so the resize it causes is not mistaken for
     // WebView2 fullscreening the window for an embedded page.
-    *shell.0.lock().map_err(|e| e.to_string())? = fullscreen;
+    shell.set(window.app_handle(), fullscreen)?;
     window.set_fullscreen(fullscreen).map_err(|e| e.to_string())
+}
+
+/// Whether the main window is fullscreen at the shell's request, read when it loads.
+#[tauri::command]
+pub fn shell_fullscreen(shell: State<'_, ShellFullscreen>) -> bool {
+    shell.get()
 }
 
 #[tauri::command]
