@@ -1275,9 +1275,11 @@ test("the start in fullscreen option is saved to state", async ({ page }) => {
 test("the sidebar fullscreen item follows the app's fullscreen state", async ({
   page,
 }) => {
-  const enter = page.getByRole("button", { name: "Enter Fullscreen (F11)" });
-  const exit = page.getByRole("button", { name: "Exit Fullscreen (F11)" });
+  const enter = page.getByRole("button", { name: "Enter Fullscreen" });
+  const exit = page.getByRole("button", { name: "Exit Fullscreen" });
   await expect(exit).toHaveCount(0);
+  await expect(enter).toHaveAttribute("aria-keyshortcuts", "F11");
+  await expect(enter.locator("kbd")).toHaveText("F11");
   await enter.click();
   await expect
     .poll(() =>

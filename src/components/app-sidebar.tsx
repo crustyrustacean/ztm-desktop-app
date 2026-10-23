@@ -91,9 +91,7 @@ export function AppSidebar({
   const handleTooltipOpenChange = (tooltip: string) => (open: boolean) =>
     onTooltipOpenChange?.(tooltip, open);
   const FullscreenIcon = fullscreen ? Minimize : Maximize;
-  const fullscreenLabel = fullscreen
-    ? "Exit Fullscreen (F11)"
-    : "Enter Fullscreen (F11)";
+  const fullscreenLabel = fullscreen ? "Exit Fullscreen" : "Enter Fullscreen";
 
   return (
     <Sidebar collapsible="icon">
@@ -132,11 +130,19 @@ export function AppSidebar({
           <SidebarMenuItem>
             <SidebarMenuButton
               onClick={onToggleFullscreen}
-              tooltip={fullscreenLabel}
+              aria-keyshortcuts="F11"
+              // The key badge is hidden in the icon-only sidebar, so the tooltip names it.
+              tooltip={`${fullscreenLabel} (F11)`}
               onTooltipOpenChange={handleTooltipOpenChange("fullscreen")}
             >
               <FullscreenIcon />
               <span>{fullscreenLabel}</span>
+              <Kbd
+                aria-hidden
+                className="ml-auto group-data-[collapsible=icon]:hidden"
+              >
+                F11
+              </Kbd>
             </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>
