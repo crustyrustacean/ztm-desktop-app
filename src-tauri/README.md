@@ -1,7 +1,7 @@
 # Rust backend
 
 The academy module loads course names from the `course` column in the upstream
-[academy CSV](https://github.com/markodowd/zero-to-mastery-links/blob/main/academy.csv)
+[academy CSV](https://github.com/ztm-desktop-application/zero-to-mastery-links/blob/main/academy.csv)
 and exposes them to the dashboard through Tauri commands. It keeps a local CSV
 cache so saved courses can be shown while the app checks for updates.
 
