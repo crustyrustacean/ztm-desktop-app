@@ -45,16 +45,23 @@ const menuItems: MenuItem[] = [
     view: "web-view",
   },
   {
+    label: "Passport",
+    icon: Globe,
+    shortcut: "4",
+    tooltip: "passport",
+    view: "passport",
+  },
+  {
     label: "Options",
     icon: Settings,
-    shortcut: "4",
+    shortcut: "5",
     tooltip: "options",
     view: "options",
   },
   {
     label: "Discord",
     icon: SiDiscord,
-    shortcut: "5",
+    shortcut: "6",
     tooltip: "discord",
   },
 ];

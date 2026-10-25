@@ -1,1 +1,1 @@
-export type View = "dashboard" | "favourites" | "web-view" | "options";
+export type View = "dashboard" | "favourites" | "web-view" | "passport" | "options";
