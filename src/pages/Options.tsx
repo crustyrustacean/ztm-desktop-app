@@ -32,6 +32,8 @@ type OptionsProps = {
   onShortcutModifierChange: (shortcutModifier: ShortcutModifier) => void;
   animations: boolean;
   onAnimationsChange: (animations: boolean) => void;
+  startFullscreen: boolean;
+  onStartFullscreenChange: (startFullscreen: boolean) => void;
 };
 
 export default function Options({
@@ -45,6 +47,8 @@ export default function Options({
   onShortcutModifierChange,
   animations,
   onAnimationsChange,
+  startFullscreen,
+  onStartFullscreenChange,
 }: OptionsProps) {
   const [theme, setTheme] = useState<Theme>(() =>
     document.documentElement.classList.contains("dark") ? "dark" : "light",
@@ -141,6 +145,22 @@ export default function Options({
           id="animations"
           checked={animations}
           onCheckedChange={onAnimationsChange}
+        />
+      </Field>
+      <Field orientation="horizontal">
+        <FieldContent>
+          <FieldLabel htmlFor="start-fullscreen">
+            Start app in fullscreen
+          </FieldLabel>
+          <FieldDescription>
+            Open the app fullscreen next time it starts. Press F11 to switch at
+            any time.
+          </FieldDescription>
+        </FieldContent>
+        <Switch
+          id="start-fullscreen"
+          checked={startFullscreen}
+          onCheckedChange={onStartFullscreenChange}
         />
       </Field>
       <Field orientation="horizontal">

@@ -430,6 +430,26 @@ test("the fullscreen curriculum link is converted into an exit control", () => {
   assert.equal(attributes.get("title"), "Return to ZTM Desktop");
 });
 
+test("F11 in the embedded view toggles the app's fullscreen", () => {
+  const runtime = runAcademyScript();
+  let prevented = false;
+  const keydown = (key, repeat = false) =>
+    runtime.windowListeners.get("keydown")({
+      key,
+      repeat,
+      preventDefault: () => (prevented = true),
+    });
+
+  keydown("a");
+  keydown("F11");
+  keydown("F11", true);
+
+  assert.ok(prevented);
+  assert.deepEqual(JSON.parse(JSON.stringify(runtime.invokes)), [
+    { command: "toggle_fullscreen" },
+  ]);
+});
+
 test("Escape from the promoted window requests its disposal", () => {
   const runtime = runAcademyScript("fullscreen");
 

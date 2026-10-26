@@ -13,6 +13,7 @@ export type AppState = {
   shortcutModifier?: ShortcutModifier | null;
   lastCourse?: string | null;
   animations?: boolean | null;
+  startFullscreen?: boolean | null;
 };
 
 export async function loadState(): Promise<AppState> {

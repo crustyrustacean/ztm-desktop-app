@@ -15,6 +15,8 @@
     "allow-dispose-web-view",
     "allow-open-course-window",
     "allow-set-web-view-theme",
+    "allow-toggle-fullscreen",
+    "allow-shell-fullscreen",
     "opener:default",
     {
       "identifier": "opener:allow-open-url",
