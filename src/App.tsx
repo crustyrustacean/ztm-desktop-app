@@ -40,6 +40,8 @@ import {
   WEB_VIEW_PROMOTED_EVENT,
 } from "@/lib/web-view-events";
 
+const PASSPORT_REQUEST: WebViewRequest = { url: "https://passport.zerotomastery.io", id: 0, };
+
 function App() {
   const desktop = isTauri();
   const [query, setQuery] = useState("");
@@ -61,9 +63,7 @@ function App() {
   const { shortcutModifier, setShortcutModifier } = useShortcutModifier();
   const filterRef = useRef<HTMLInputElement>(null);
   const hasFilter = view === "dashboard" || view === "favourites";
-  const [webViewRequest, setWebViewRequest] = useState<WebViewRequest | null>(
-    null,
-  );
+  const [webViewRequest, setWebViewRequest] = useState<WebViewRequest>(() => ({ url: "https://academy.zerotomastery.io/", id: 1, }));
   const [activeSidebarTooltip, setActiveSidebarTooltip] = useState<
     string | null
   >(null);
@@ -77,7 +77,7 @@ function App() {
     [],
   );
   const selectView = useCallback((nextView: View) => {
-    if (nextView === "web-view") setSidebarOpen(false);
+    if (nextView === "web-view" || nextView === "passport") setSidebarOpen(false);
     setView(nextView);
   }, []);
 
@@ -106,8 +106,9 @@ function App() {
           Digit1: () => selectView("dashboard"),
           Digit2: () => selectView("favourites"),
           Digit3: () => selectView("web-view"),
-          Digit4: () => selectView("options"),
-          Digit5: handleOpenDiscord,
+          Digit4: () => selectView("passport"),
+          Digit5: () => selectView("options"),
+          Digit6: handleOpenDiscord,
           KeyS: focusFilter,
         }
       : {},
@@ -252,10 +253,10 @@ function App() {
               animations={animations}
             />
           </div>
-          <div id="web-view" hidden={view !== "web-view"}>
+          <div id="web-view" hidden={view !== "web-view" && view !== "passport"}>
             <WebView
-              active={view === "web-view" && !discordOpenError}
-              request={webViewRequest}
+              active={view === "web-view" || view === "passport" && !discordOpenError}
+              request={view === "passport" ? PASSPORT_REQUEST : webViewRequest}
               sidebarTooltipOpen={activeSidebarTooltip !== null}
             />
           </div>
