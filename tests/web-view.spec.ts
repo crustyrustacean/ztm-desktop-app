@@ -1352,3 +1352,55 @@ test("the animations option applies to the Resume and Courses grids", async ({
     await expect.poll(() => hoveredScale(grid)).toBe("none");
   }
 });
+
+test("signing out in Options clears the Academy session and returns to sign-in", async ({
+  page,
+}) => {
+  await page.getByRole("button", { name: "Options" }).click();
+  await page.getByRole("button", { name: "Sign Out" }).click();
+
+  await expect(
+    page.getByRole("heading", { name: "Sign in to ZTM Academy" }),
+  ).toBeVisible();
+  await expect(page.getByRole("button", { name: "Dashboard" })).toHaveCount(0);
+  const calls = await page.evaluate(() =>
+    (
+      globalThis as typeof globalThis & { __TAURI_CALLS__: InvokeCall[] }
+    ).__TAURI_CALLS__.map((call) => call.command),
+  );
+  expect(calls).toContain("sign_out");
+  await expect
+    .poll(() =>
+      page.evaluate(() =>
+        (
+          globalThis as typeof globalThis & { __TAURI_CALLS__: InvokeCall[] }
+        ).__TAURI_CALLS__
+          .filter((call) => call.command === "show_web_view")
+          .at(-1),
+      ),
+    )
+    .toMatchObject({ args: { authCheck: true } });
+
+  await authenticateAcademy(page);
+  await expect(page.getByRole("button", { name: "Dashboard" })).toBeVisible();
+});
+
+test("a failed sign out keeps the user signed in and explains why", async ({
+  page,
+}) => {
+  await page.evaluate(() =>
+    (
+      globalThis as typeof globalThis & {
+        __rejectTauriCommand: (command: string) => void;
+      }
+    ).__rejectTauriCommand("sign_out"),
+  );
+  await page.getByRole("button", { name: "Options" }).click();
+  await page.getByRole("button", { name: "Sign Out" }).click();
+
+  await expect(
+    page.getByRole("alertdialog", { name: "Could not sign out" }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Dismiss" }).click();
+  await expect(page.getByRole("heading", { name: "Options" })).toBeVisible();
+});

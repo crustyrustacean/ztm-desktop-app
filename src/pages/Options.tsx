@@ -1,4 +1,6 @@
 import { useState } from "react";
+import { LogOutIcon } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import {
   Field,
   FieldContent,
@@ -32,6 +34,7 @@ type OptionsProps = {
   onShortcutModifierChange: (shortcutModifier: ShortcutModifier) => void;
   animations: boolean;
   onAnimationsChange: (animations: boolean) => void;
+  onSignOut: () => void;
   startFullscreen: boolean;
   onStartFullscreenChange: (startFullscreen: boolean) => void;
 };
@@ -47,6 +50,7 @@ export default function Options({
   onShortcutModifierChange,
   animations,
   onAnimationsChange,
+  onSignOut,
   startFullscreen,
   onStartFullscreenChange,
 }: OptionsProps) {
@@ -184,6 +188,19 @@ export default function Options({
             </NativeSelectOption>
           ))}
         </NativeSelect>
+      </Field>
+      <Field orientation="horizontal" className="border-t pt-6">
+        <FieldContent>
+          <FieldLabel htmlFor="sign-out">Sign out</FieldLabel>
+          <FieldDescription>
+            Remove your saved Academy sign-in. You'll need to sign in again to
+            use the app.
+          </FieldDescription>
+        </FieldContent>
+        <Button id="sign-out" variant="destructive" onClick={onSignOut}>
+          <LogOutIcon />
+          Sign Out
+        </Button>
       </Field>
     </section>
   );

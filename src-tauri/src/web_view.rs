@@ -17,6 +17,9 @@ const COURSE_WINDOW_LABEL: &str = "course";
 const FULLSCREEN_WINDOW_LABEL: &str = "academy-fullscreen";
 #[cfg(target_os = "linux")]
 const ACADEMY_DATA_DIR: &str = "academy-webview";
+/// A hidden window that shares the Academy's Linux WebKit context while signing out.
+#[cfg(target_os = "linux")]
+const SIGN_OUT_WINDOW_LABEL: &str = "academy-sign-out";
 /// Tells the shell to return to its dashboard after the embedded view is promoted.
 const PROMOTED_EVENT: &str = "web-view-promoted";
 /// Returns the standalone page's current session to the embedded view.
@@ -492,6 +495,57 @@ pub async fn dispose_web_view<R: Runtime>(window: Window<R>) -> Result<(), Strin
         webview.close().map_err(|e| e.to_string())?;
     }
     Ok(())
+}
+
+/// Closes every Academy view and deletes the Academy's cookies and storage, so the
+/// next Academy page asks the user to sign in again.
+#[tauri::command]
+pub async fn sign_out<R: Runtime>(webview: Webview<R>) -> Result<(), String> {
+    let app = webview.app_handle();
+    destroy_fullscreen(app)?;
+    // The course window doubles as the sign-in window, so a fresh one must be built
+    // for the next sign-in rather than reusing this one.
+    if let Some(window) = app.get_webview_window(COURSE_WINDOW_LABEL) {
+        window.destroy().map_err(|e| e.to_string())?;
+    }
+    if let Some(child) = app.get_webview(LABEL) {
+        child.close().map_err(|e| e.to_string())?;
+    }
+    clear_academy_data(&webview)
+}
+
+/// Windows and macOS keep every app webview's browsing data in one shared store.
+#[cfg(not(target_os = "linux"))]
+fn clear_academy_data<R: Runtime>(webview: &Webview<R>) -> Result<(), String> {
+    webview.clear_all_browsing_data().map_err(|e| e.to_string())
+}
+
+/// Linux keeps Academy data in its own WebKit context, so clear it through a hidden
+/// window that shares that context. The runtime keeps Linux contexts alive for the
+/// app's lifetime, so destroying the window does not cancel the clear.
+#[cfg(target_os = "linux")]
+fn clear_academy_data<R: Runtime>(webview: &Webview<R>) -> Result<(), String> {
+    let app = webview.app_handle();
+    let window = match app.get_webview_window(SIGN_OUT_WINDOW_LABEL) {
+        Some(window) => window,
+        None => WebviewWindowBuilder::new(
+            app,
+            SIGN_OUT_WINDOW_LABEL,
+            WebviewUrl::External("about:blank".parse().map_err(|e| format!("{e}"))?),
+        )
+        .visible(false)
+        .data_directory(
+            app.path()
+                .app_data_dir()
+                .map_err(|error| error.to_string())?
+                .join(ACADEMY_DATA_DIR),
+        )
+        .build()
+        .map_err(|e| e.to_string())?,
+    };
+    let result = window.clear_all_browsing_data().map_err(|e| e.to_string());
+    window.destroy().map_err(|e| e.to_string())?;
+    result
 }
 
 /// Opens `url` in the course window, creating it on first use and reusing it after.
