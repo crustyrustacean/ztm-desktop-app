@@ -4,17 +4,7 @@ This template should help get you started developing with Tauri, React and Types
 
 ## Getting Started
 
-Install dependencies:
-
-```bash
-npm install
-```
-
-Run the app in development mode:
-
-```bash
-npm run tauri dev
-```
+See [CONTRIBUTING.md](CONTRIBUTING.md) for setup and how to run the app.
 
 ## Discord
 
