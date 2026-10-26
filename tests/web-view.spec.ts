@@ -1249,6 +1249,81 @@ test("opening a course shows it under Resume on the Dashboard", async ({
   ).toBeVisible();
 });
 
+test("the start in fullscreen option is saved to state", async ({ page }) => {
+  await page.getByRole("button", { name: "Options" }).click();
+  const option = page.getByRole("switch", { name: "Start app in fullscreen" });
+  await expect(option).not.toBeChecked();
+
+  await option.click();
+  await expect(option).toBeChecked();
+  await expect
+    .poll(() =>
+      page.evaluate(() =>
+        (
+          globalThis as typeof globalThis & { __TAURI_CALLS__: InvokeCall[] }
+        ).__TAURI_CALLS__.some(
+          (call) =>
+            call.command === "save_state" &&
+            (call.args.state as { startFullscreen?: boolean })
+              .startFullscreen === true,
+        ),
+      ),
+    )
+    .toBe(true);
+});
+
+test("the sidebar fullscreen item follows the app's fullscreen state", async ({
+  page,
+}) => {
+  const enter = page.getByRole("button", { name: "Enter Fullscreen" });
+  const exit = page.getByRole("button", { name: "Exit Fullscreen" });
+  await expect(exit).toHaveCount(0);
+  await expect(enter).toHaveAttribute("aria-keyshortcuts", "F11");
+  await expect(enter.locator("kbd")).toHaveText("F11");
+  await enter.click();
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () =>
+          (
+            globalThis as typeof globalThis & { __TAURI_CALLS__: InvokeCall[] }
+          ).__TAURI_CALLS__.filter((call) => call.command === "toggle_fullscreen")
+            .length,
+      ),
+    )
+    .toBe(1);
+
+  await page.evaluate(() =>
+    (
+      globalThis as typeof globalThis & {
+        __emitTauriEvent: (event: string, payload: unknown) => void;
+      }
+    ).__emitTauriEvent("shell-fullscreen-changed", true),
+  );
+  await exit.click();
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () =>
+          (
+            globalThis as typeof globalThis & { __TAURI_CALLS__: InvokeCall[] }
+          ).__TAURI_CALLS__.filter((call) => call.command === "toggle_fullscreen")
+            .length,
+      ),
+    )
+    .toBe(2);
+
+  await page.evaluate(() =>
+    (
+      globalThis as typeof globalThis & {
+        __emitTauriEvent: (event: string, payload: unknown) => void;
+      }
+    ).__emitTauriEvent("shell-fullscreen-changed", false),
+  );
+  await expect(exit).toHaveCount(0);
+  await expect(enter).toBeVisible();
+});
+
 test("the animations option applies to the Resume and Courses grids", async ({
   page,
 }) => {

@@ -1,10 +1,18 @@
 import type { ComponentType } from "react";
-import { Globe, LayoutDashboard, Settings, Star } from "lucide-react";
+import {
+  Globe,
+  LayoutDashboard,
+  Maximize,
+  Minimize,
+  Settings,
+  Star,
+} from "lucide-react";
 import { SiDiscord } from "react-icons/si";
 import { Kbd } from "@/components/ui/kbd";
 import {
   Sidebar,
   SidebarContent,
+  SidebarFooter,
   SidebarGroup,
   SidebarMenu,
   SidebarMenuButton,
@@ -66,6 +74,9 @@ type AppSidebarProps = {
   onTooltipOpenChange?: (tooltip: string, open: boolean) => void;
   /** Show each item's shortcut key while the shortcut modifier is held. */
   showHints: boolean;
+  /** Labels the fullscreen item, the way out of fullscreen's hidden window controls. */
+  fullscreen: boolean;
+  onToggleFullscreen: () => void;
 };
 
 export function AppSidebar({
@@ -74,9 +85,13 @@ export function AppSidebar({
   onOpenDiscord,
   onTooltipOpenChange,
   showHints,
+  fullscreen,
+  onToggleFullscreen,
 }: AppSidebarProps) {
   const handleTooltipOpenChange = (tooltip: string) => (open: boolean) =>
     onTooltipOpenChange?.(tooltip, open);
+  const FullscreenIcon = fullscreen ? Minimize : Maximize;
+  const fullscreenLabel = fullscreen ? "Exit Fullscreen" : "Enter Fullscreen";
 
   return (
     <Sidebar collapsible="icon">
@@ -110,6 +125,28 @@ export function AppSidebar({
           </SidebarMenu>
         </SidebarGroup>
       </SidebarContent>
+      <SidebarFooter>
+        <SidebarMenu>
+          <SidebarMenuItem>
+            <SidebarMenuButton
+              onClick={onToggleFullscreen}
+              aria-keyshortcuts="F11"
+              // The key badge is hidden in the icon-only sidebar, so the tooltip names it.
+              tooltip={`${fullscreenLabel} (F11)`}
+              onTooltipOpenChange={handleTooltipOpenChange("fullscreen")}
+            >
+              <FullscreenIcon />
+              <span>{fullscreenLabel}</span>
+              <Kbd
+                aria-hidden
+                className="ml-auto group-data-[collapsible=icon]:hidden"
+              >
+                F11
+              </Kbd>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+        </SidebarMenu>
+      </SidebarFooter>
     </Sidebar>
   );
 }

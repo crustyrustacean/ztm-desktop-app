@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 use tauri::Manager;
 
 const ACADEMY_URL: &str =
-    "https://raw.githubusercontent.com/markodowd/zero-to-mastery-links/main/academy.csv";
+    "https://raw.githubusercontent.com/ztm-desktop-application/zero-to-mastery-links/main/academy.csv";
 const MAX_CSV_BYTES: usize = 2 * 1024 * 1024;
 
 const WEEK_SECS: u64 = 7 * 24 * 60 * 60;

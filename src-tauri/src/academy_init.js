@@ -656,6 +656,19 @@
   window.addEventListener("load", restoreSession);
   window.addEventListener("pagehide", saveSession);
 
+  if (window.__ZTM_DESKTOP_VIEW__ === "embedded") {
+    // The embedded page has keyboard focus while it is shown, so the shell's own
+    // F11 listener never sees the key.
+    window.addEventListener("keydown", (event) => {
+      if (event.key !== "F11") return;
+      event.preventDefault();
+      if (event.repeat) return;
+      window.__TAURI_INTERNALS__
+        ?.invoke("toggle_fullscreen")
+        .catch((error) => console.error("toggle_fullscreen failed", error));
+    });
+  }
+
   if (window.__ZTM_DESKTOP_VIEW__ === "fullscreen") {
     // The resize watcher normally handles Escape. This is an additional disposal
     // path for platforms that do not emit a resize when leaving OS fullscreen.
